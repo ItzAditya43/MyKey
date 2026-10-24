@@ -56,6 +56,21 @@ abstract class Panel(ctx: Context, protected val t: KbTheme) : LinearLayout(ctx)
         setOnClickListener { onClick() }
     }
 
+    /**
+     * Bottom bar laid out like the keyboard's bottom row (10 units wide), so your thumb finds things
+     * in the same place: ABC sits over ?123 + globe, the middle over comma + space, the right part over period + enter.
+     */
+    protected fun bottomBar(onAbc: () -> Unit, middle: List<Pair<View, Float>> = emptyList(), right: View? = null): LinearLayout {
+        val bar = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(3f), px(3f), px(3f), px(5f)) }
+        fun lp(w: Float) = LayoutParams(0, -1, w).apply { setMargins(px(3f), px(2f), px(3f), px(2f)) }
+        bar.addView(textButton("ABC", onAbc).apply { contentDescription = "Back to the keys" }, lp(2.4f))
+        var used = 0f
+        middle.forEach { (v, w) -> bar.addView(v, lp(w)); used += w }
+        if (used < 5f) bar.addView(View(context), lp(5f - used))
+        bar.addView(right ?: View(context), lp(2.6f))
+        return bar
+    }
+
     protected fun textButton(s: String, onClick: () -> Unit) = label(s, 14f, true).apply {
         background = surface(modColor(), 10f)
         setPadding(px(14f), 0, px(14f), 0)
@@ -110,11 +125,9 @@ class GifPanel(
 ) : Panel(ctx, t) {
     init {
         val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
-        head.addView(iconButton("back", "Back to keys", onBack), LayoutParams(px(44f), px(40f)))
-        head.addView(label("GIFs & stickers", 16f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(12f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
+        head.addView(label("GIFs & stickers", 15f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(10f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
         val online = onRemote != null && GifOnline.enabled(ctx)
-        if (online) head.addView(iconButton("search", "Search GIFs", onSearch), LayoutParams(px(44f), px(40f)))
-        addView(head, LayoutParams(-1, px(48f)))
+        addView(head, LayoutParams(-1, px(40f)))
         val grid = GridView(ctx).apply { stretchMode = GridView.STRETCH_COLUMN_WIDTH; isVerticalScrollBarEnabled = false; selector = GradientDrawable() }
         val files = EmojiPanel.gifFiles(ctx)
         val status = label(when {
@@ -125,6 +138,7 @@ class GifPanel(
         if (status.text.isNotEmpty()) addView(status, LayoutParams(-1, -2))
         addView(grid, LayoutParams(-1, 0, 1f))
         bindGifGrid(grid, files, emptyList(), onLocal, onRemote)
+        addView(bottomBar(onBack, if (online) listOf(iconButton("search", "Search GIFs", onSearch) to 1f) else emptyList()), LayoutParams(-1, px(50f)))
         if (online) GifOnline.search(ctx, "") { gifs, err ->
             status.text = err ?: ""
             status.visibility = if (err == null) View.GONE else View.VISIBLE
@@ -142,14 +156,13 @@ class GifResultsPanel(
 ) : Panel(ctx, t) {
     init {
         val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
-        head.addView(iconButton("back", "Back", onBack), LayoutParams(px(44f), px(40f)))
         head.addView(label("GIFs: $query", 16f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(12f), 0, 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, LayoutParams(0, -1, 1f))
-        head.addView(iconButton("search", "Search again", onSearchAgain), LayoutParams(px(44f), px(40f)))
-        addView(head, LayoutParams(-1, px(48f)))
+        addView(head, LayoutParams(-1, px(40f)))
         val grid = GridView(ctx).apply { stretchMode = GridView.STRETCH_COLUMN_WIDTH; isVerticalScrollBarEnabled = false; selector = GradientDrawable() }
         val status = label("Searching…", 14f).apply { alpha = 0.7f }
         addView(status, LayoutParams(-1, px(40f)))
         addView(grid, LayoutParams(-1, 0, 1f))
+        addView(bottomBar(onBack, listOf(iconButton("search", "Search again", onSearchAgain) to 1f)), LayoutParams(-1, px(50f)))
         GifOnline.search(ctx, query) { gifs, err ->
             status.visibility = if (gifs.isEmpty()) View.VISIBLE else View.GONE
             status.text = err ?: if (gifs.isEmpty()) "No GIFs found for “$query”." else ""
@@ -170,6 +183,7 @@ class EmojiPanel(
     @Suppress("UNUSED_PARAMETER") onRemoteGif: ((GifOnline.Gif) -> Unit)? = null,
     @Suppress("UNUSED_PARAMETER") onGifSearch: (() -> Unit)? = null,
     @Suppress("UNUSED_PARAMETER") startOnGifs: Boolean = false,
+    private val onSpace: () -> Unit = {},
 ) : Panel(ctx, t) {
 
     private val grid: EmojiGrid
@@ -211,13 +225,9 @@ class EmojiPanel(
             tabRow.addView(tv, LayoutParams(-2, -1))
         }
         tabScroll.addView(tabRow, LayoutParams(-2, -1))
-        addView(tabScroll, LayoutParams(-1, px(42f)))
+        // Thumb-first layout: emoji to look at on top, everything you tap at the bottom.
         addView(grid, LayoutParams(-1, 0, 1f))
-
-        val bottom = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(6f)) }
-        bottom.addView(textButton("ABC", onBack), LayoutParams(px(68f), -1).apply { rightMargin = px(6f) })
-        bottom.addView(iconButton("search", "Search emoji", onSearch), LayoutParams(px(52f), -1).apply { rightMargin = px(6f) })
-        bottom.addView(View(ctx), LayoutParams(0, -1, 1f))
+        addView(tabScroll, LayoutParams(-1, px(44f)))
         val del = iconButton("backspace", "Delete") { onBackspace() }
         // Hold backspace to keep deleting.
         val h = android.os.Handler(android.os.Looper.getMainLooper())
@@ -227,8 +237,13 @@ class EmojiPanel(
             if (e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) h.removeCallbacks(rep)
             false
         }
-        bottom.addView(del, LayoutParams(px(68f), -1))
-        addView(bottom, LayoutParams(-1, px(50f)))
+        val space = label("space", 13f).apply {
+            alpha = 0.8f
+            background = surface(keyColor(), 10f)
+            contentDescription = "Space"
+            setOnClickListener { onSpace() }
+        }
+        addView(bottomBar(onBack, listOf(iconButton("search", "Search emoji", onSearch) to 1f, space to 4f), del), LayoutParams(-1, px(52f)))
         selectTab(0, scroll = false)
     }
 
@@ -591,9 +606,8 @@ class SnippetPanel(
 ) : Panel(ctx, t) {
     init {
         val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
-        head.addView(iconButton("back", "Back to keys", onBack), LayoutParams(px(44f), px(40f)))
-        head.addView(label("Snippets", 16f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(12f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
-        addView(head, LayoutParams(-1, px(48f)))
+        head.addView(label("Snippets", 15f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(10f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
+        addView(head, LayoutParams(-1, px(40f)))
         val list = LinearLayout(ctx).apply { orientation = VERTICAL; setPadding(px(6f), 0, px(6f), px(6f)) }
         val items = Snippets.all(ctx)
         if (items.isEmpty()) list.addView(label("No snippets yet. Add addresses, templates or anything you paste often in MyKey settings → Shortcuts.", 14f).apply {
@@ -612,6 +626,7 @@ class SnippetPanel(
             }, LayoutParams(-1, -2).apply { topMargin = px(6f) })
         }
         addView(ScrollView(ctx).apply { isVerticalScrollBarEnabled = false; addView(list) }, LayoutParams(-1, 0, 1f))
+        addView(bottomBar(onBack), LayoutParams(-1, px(52f)))
     }
 }
 
@@ -637,10 +652,9 @@ class LangPanel(
 ) : Panel(ctx, t) {
     init {
         val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
-        head.addView(iconButton("back", "Back to keys", onBack), LayoutParams(px(44f), px(40f)))
-        head.addView(label("Languages", 16f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(12f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
-        head.addView(textButton("All settings", onSettings), LayoutParams(-2, px(36f)))
-        addView(head, LayoutParams(-1, px(48f)))
+        head.addView(label("Languages", 15f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(10f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
+        head.addView(textButton("All settings", onSettings), LayoutParams(-2, px(34f)))
+        addView(head, LayoutParams(-1, px(42f)))
         val enabled = Langs.enabled(Prefs.get(ctx))
         val sub = mapOf("en" to "English", "es" to "Spanish", "ru" to "Russian", "ja" to "Japanese", "zh" to "Mandarin")
         val grid = LinearLayout(ctx).apply { orientation = VERTICAL; setPadding(px(6f), 0, px(6f), px(6f)) }
@@ -670,7 +684,8 @@ class LangPanel(
             grid.addView(row, LayoutParams(-1, 0, 1f))
         }
         addView(grid, LayoutParams(-1, 0, 1f))
-        addView(label("Long-press a language to remove it", 12f).apply { alpha = 0.55f }, LayoutParams(-1, px(22f)))
+        addView(label("Long-press a language to remove it", 12f).apply { alpha = 0.55f }, LayoutParams(-1, px(20f)))
+        addView(bottomBar(onBack), LayoutParams(-1, px(52f)))
     }
 }
 
@@ -684,14 +699,15 @@ class ClipPanel(
     private val onBack: () -> Unit,
 ) : Panel(ctx, t) {
     private val list = LinearLayout(ctx).apply { orientation = VERTICAL; setPadding(px(6f), 0, px(6f), px(6f)) }
+    private val scroll = ScrollView(ctx)
 
     init {
         val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
-        head.addView(iconButton("back", "Back to keys", onBack), LayoutParams(px(44f), px(40f)))
-        head.addView(label("Clipboard", 16f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(12f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
+        head.addView(label("Clipboard", 15f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(10f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
         head.addView(textButton("Clear") { user.clearClips(); render() }, LayoutParams(-2, px(36f)))
-        addView(head, LayoutParams(-1, px(48f)))
-        addView(ScrollView(ctx).apply { isVerticalScrollBarEnabled = false; addView(list) }, LayoutParams(-1, 0, 1f))
+        addView(head, LayoutParams(-1, px(40f)))
+        addView(scroll.apply { isVerticalScrollBarEnabled = false; addView(list) }, LayoutParams(-1, 0, 1f))
+        addView(bottomBar(onBack), LayoutParams(-1, px(52f)))
         render()
     }
 
@@ -705,7 +721,10 @@ class ClipPanel(
             })
             return
         }
-        clips.forEach { c ->
+        // Pinned first (top), then oldest → newest, so the latest copy sits right above your thumb.
+        val ordered = clips.filter { it.pinned } + clips.filter { !it.pinned }.reversed()
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        ordered.forEach { c ->
             val row = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL

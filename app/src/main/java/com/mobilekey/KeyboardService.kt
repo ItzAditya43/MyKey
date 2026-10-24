@@ -521,7 +521,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
                     cached.reopen()
                     cached
                 } else EmojiPanel(this, t, onEmoji = ::insertEmoji, onBack = { showPanel("keys") },
-                    onBackspace = { onSpecial("backspace") }, onSearch = ::startEmojiSearch, onGif = null)
+                    onBackspace = { onSpecial("backspace") }, onSearch = ::startEmojiSearch, onGif = null,
+                    onSpace = { ownEdit(); currentInputConnection?.commitText(" ", 1) })
                     .also { emojiPanel = it; cachedPanelHeight = h }
             }
             "gif" -> GifPanel(this, t, onLocal = ::sendGif, onRemote = if (f("gif_search")) ::sendRemoteGif else null,

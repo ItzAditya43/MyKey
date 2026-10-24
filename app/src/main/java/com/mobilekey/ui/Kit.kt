@@ -136,22 +136,28 @@ class ThemeSwatch(ctx: Context, val theme: KbTheme, private val p: Palette) : Vi
         val rows = listOf(10, 9, 7)
         val kh = (r.height() - 14 * d) / 4
         val gap = 2.2f * d
+        // True-black themes have black keys; draw their coloured outlines so the card isn't blank.
+        val outline = theme.amoled
         rows.forEachIndexed { ri, n ->
             val kw = (r.width() - 12 * d) / 10
             val start = r.left + 6 * d + (10 - n) * kw / 2
             for (i in 0 until n) {
-                paint.color = theme.key
                 val x = start + i * kw
                 val y = r.top + 6 * d + ri * kh
+                if (outline) {
+                    paint.style = Paint.Style.STROKE; paint.strokeWidth = 1f * d; paint.color = theme.border
+                } else paint.color = theme.key
                 c.drawRoundRect(x + gap / 2, y + gap / 2, x + kw - gap / 2, y + kh - gap / 2, 2.5f * d, 2.5f * d, paint)
+                paint.style = Paint.Style.FILL
             }
         }
         val y = r.top + 6 * d + 3 * kh
         val kw = (r.width() - 12 * d) / 10
-        paint.color = theme.mod
+        if (outline) { paint.style = Paint.Style.STROKE; paint.strokeWidth = 1f * d; paint.color = theme.border } else paint.color = theme.mod
         c.drawRoundRect(r.left + 6 * d + gap / 2, y + gap / 2, r.left + 6 * d + kw * 2 - gap / 2, y + kh - gap / 2, 2.5f * d, 2.5f * d, paint)
-        paint.color = theme.key
+        if (!outline) paint.color = theme.key
         c.drawRoundRect(r.left + 6 * d + kw * 2 + gap / 2, y + gap / 2, r.left + 6 * d + kw * 7.6f - gap / 2, y + kh - gap / 2, 2.5f * d, 2.5f * d, paint)
+        paint.style = Paint.Style.FILL
         paint.color = theme.acc
         c.drawRoundRect(r.left + 6 * d + kw * 7.6f + gap / 2, y + gap / 2, r.right - 6 * d - gap / 2, y + kh - gap / 2, 2.5f * d, 2.5f * d, paint)
         if (picked) {
@@ -269,7 +275,8 @@ class Kit(val ctx: Context, val p: Palette) {
     /** Segmented control for 2–4 short choices, with a sliding highlight. */
     fun segmented(options: List<Pair<String, String>>, current: String, onPick: (String) -> Unit): View {
         val bar = FrameLayout(ctx).apply { background = rounded(p.surface2, 14f); setPadding(dp(4), dp(4), dp(4), dp(4)) }
-        val pill = View(ctx).apply { background = rounded(p.surface, 11f); elevation = dp(2).toFloat() }
+        // No elevation: a raised pill would be drawn on top of the labels and hide the selected one.
+        val pill = View(ctx).apply { background = rounded(if (p.dark) p.line else p.surface, 11f) }
         val row = row()
         bar.addView(pill, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
         bar.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))

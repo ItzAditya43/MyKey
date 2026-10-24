@@ -71,6 +71,17 @@ class SettingsActivity : Activity() {
         )
         stack.add("home")
         swap(build("home"), forward = true, animate = false)
+        intent?.getStringExtra("page")?.let { open(it) }
+    }
+
+    /** Opening settings with a "page" extra jumps straight to that page (used by the keyboard and for testing). */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra("page")?.let { pg ->
+            while (stack.size > 1) stack.removeAt(stack.size - 1)
+            swap(build("home"), forward = true, animate = false)
+            open(pg)
+        }
     }
 
     override fun onResume() {
@@ -292,7 +303,7 @@ class SettingsActivity : Activity() {
         val head = k.row().apply { setPadding(k.dp(4), 0, k.dp(4), 0) }
         head.addView(k.text("MyKey", 36f, p.fg, 800, display = true), LinearLayout.LayoutParams(0, -2, 1f))
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
-        val active = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith(packageName) == true
+        val active = isCurrentKeyboard()
         head.addView(k.row().apply {
             background = k.rounded(if (active) withAlpha(p.accent, 0x22) else withAlpha(p.danger, 0x22), 99f)
             setPadding(k.dp(10), k.dp(5), k.dp(12), k.dp(5))
@@ -350,6 +361,15 @@ class SettingsActivity : Activity() {
             }
         })
         return scroll
+    }
+
+    /** Is MyKey the keyboard in use? Android 14+ has an official call; older versions read the setting. */
+    private fun isCurrentKeyboard(): Boolean {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val info = if (Build.VERSION.SDK_INT >= 34) imm.currentInputMethodInfo else null
+        val secure = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+        if (info != null) return info.packageName == packageName
+        return secure?.startsWith(packageName) == true
     }
 
     private fun statusCard(): View {

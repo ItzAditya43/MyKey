@@ -511,20 +511,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         refreshBar()
     }
 
-    private fun tools(): List<Pair<String, String>> = buildList {
-        if (f("emoji")) add("emoji" to "emoji")
-        if (f("clipboard")) add("clipboard" to "clipboard")
-        if (f("snippets")) add("snippet" to "snippets")
-        if (f("edit_toolbar")) add("edit" to "edit")
-        if (f("voice")) add("voice" to "voice")
-        if (f("undo_redo")) { add("undo" to "undo"); add("redo" to "redo") }
-        if (f("tool_theme")) add("theme" to "theme")
-        if (f("tool_resize")) add("resize" to "resize")
-        add("hand" to "hand")
-        add("float" to "float")
-        add("incognito" to "incognito")
-        add("settings" to "settings")
-    }
+    private fun tools(): List<Pair<String, String>> = Toolbar.visible(prefs).map { it.icon to it.id }
 
     private fun toggleToolbar() {
         if (emojiSearch) {
@@ -1159,7 +1146,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             val chips = fieldChips()
             when {
                 chips.isNotEmpty() -> b.chips(chips, emptyList())
-                f("quick_toolbar") -> b.toolbar(tools(), activeTools())
+                f("quick_toolbar") && prefs.getBoolean("toolbar_auto", true) -> b.toolbar(tools(), activeTools())
                 else -> b.set(emptyList(), false)
             }
             return
@@ -1171,8 +1158,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             val chips = helperChips()
             when {
                 chips.isNotEmpty() -> b.chips(chips, list)
-                // Nothing to suggest: show the toolbar instead of an empty strip.
-                list.isEmpty() && f("quick_toolbar") -> b.toolbar(tools(), activeTools())
+                // Nothing to suggest: show the toolbar instead of an empty strip (unless you chose tap-only).
+                list.isEmpty() && f("quick_toolbar") && prefs.getBoolean("toolbar_auto", true) -> b.toolbar(tools(), activeTools())
                 else -> b.set(list, false)
             }
             return

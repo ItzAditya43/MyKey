@@ -141,6 +141,7 @@ class SettingsActivity : Activity() {
         "typing" -> typing()
         "correction" -> featurePage("Autocorrect", "Fixes, capitals and punctuation.", "Correction")
         "tools" -> tools()
+        "toolbar" -> toolbarPage()
         "learning" -> learning()
         "shortcuts" -> shortcuts()
         "layouts" -> layouts()
@@ -235,6 +236,7 @@ class SettingsActivity : Activity() {
             Tile("⌨", "Typing", "${typing.count { f(it.id) }} of ${typing.size} on", "typing"),
             Tile("✓", "Autocorrect", if (f("autocorrect")) (if (f("ac_aggressive")) "On · aggressive" else "On") else "Off", "correction"),
             Tile("☺", "Tools", "Emoji, clipboard, voice, one-handed", "tools"),
+            Tile("⋯", "Toolbar", "${Toolbar.visible(prefs).size} buttons above the keys", "toolbar"),
             Tile("✦", "Learning", if (f("incognito")) "Incognito is on" else "$learned words learned", "learning"),
             Tile("↦", "Shortcuts", "${user.allShortcuts().size} shortcuts", "shortcuts"),
             Tile("{ }", "Layouts", "Edit keys as JSON", "layouts"),
@@ -787,6 +789,67 @@ class SettingsActivity : Activity() {
             }
             if (f("adaptive_keys")) addView(k.button("Forget how I aim", "secondary") {
                 prefs.edit().remove("aim").apply(); it.text = "Forgotten. MyKey will relearn as you type."
+            }, k.lp(top = 18))
+        }
+    }
+
+    private fun toolbarPage(): View {
+        val theme = Themes.byName(this, KbConfig.themeName(this, prefs))
+        val previewRow = k.row().apply {
+            background = k.rounded(theme.bg, 18f)
+            setPadding(k.dp(6), 0, k.dp(6), 0)
+        }
+        fun refreshPreview() {
+            previewRow.removeAllViews()
+            previewRow.addView(com.mobilekey.ui.IconView(this, "grid", theme.fg), LinearLayout.LayoutParams(k.dp(40), k.dp(48)))
+            Toolbar.visible(prefs).forEach { item ->
+                previewRow.addView(com.mobilekey.ui.IconView(this, item.icon, theme.fg), LinearLayout.LayoutParams(0, k.dp(48), 1f))
+            }
+        }
+        refreshPreview()
+        return page("Toolbar", "The row of buttons above the keys.", previewRow) {
+            section("Toolbar") {
+                toggles("quick_toolbar")
+                divided(k.toggleRow("Show automatically", "When there's nothing to suggest. Off: only when you tap the grid button.",
+                    prefs.getBoolean("toolbar_auto", true)) { prefs.edit().putBoolean("toolbar_auto", it).apply() })
+            }
+            addView(k.eyebrow("Buttons · switch on or off, arrows to reorder"))
+            val list = k.card()
+            fun render() {
+                list.removeAllViews()
+                val order = Toolbar.order(prefs).toMutableList()
+                val hidden = Toolbar.hidden(prefs)
+                order.forEachIndexed { i, item ->
+                    val featureOff = item.feature != null && !f(item.feature)
+                    val r = k.row().apply { setPadding(0, k.dp(8), 0, k.dp(8)) }
+                    r.addView(com.mobilekey.ui.IconView(this@SettingsActivity, item.icon, p.fg), LinearLayout.LayoutParams(k.dp(36), k.dp(36)))
+                    val texts = k.column().apply { setPadding(k.dp(10), 0, k.dp(6), 0) }
+                    texts.addView(k.text(item.name, 15.5f, p.fg, 520))
+                    if (featureOff) texts.addView(k.text("Feature is off in Tools", 12.5f, p.muted))
+                    r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+                    fun arrow(label: String, enabled: Boolean, move: Int) = k.text(label, 18f, if (enabled) p.fg else p.line, 600).apply {
+                        gravity = Gravity.CENTER
+                        if (enabled) {
+                            background = k.ripple(p.surface2, 99f)
+                            setOnClickListener {
+                                val it2 = order.removeAt(i); order.add(i + move, it2)
+                                Toolbar.setOrder(prefs, order); render(); refreshPreview()
+                            }
+                        }
+                    }
+                    r.addView(arrow("↑", i > 0, -1), LinearLayout.LayoutParams(k.dp(36), k.dp(36)).apply { rightMargin = k.dp(4) })
+                    r.addView(arrow("↓", i < order.size - 1, 1), LinearLayout.LayoutParams(k.dp(36), k.dp(36)).apply { rightMargin = k.dp(8) })
+                    r.addView(com.mobilekey.ui.Toggle(this@SettingsActivity, p).apply {
+                        set(item.id !in hidden, false)
+                        onChange = { on -> Toolbar.setHidden(prefs, item.id, !on); refreshPreview() }
+                    })
+                    k.addDivided(list, r)
+                }
+            }
+            addView(list, k.lp())
+            render()
+            addView(k.button("Reset toolbar", "secondary") {
+                prefs.edit().remove("toolbar_order").remove("toolbar_hidden").remove("toolbar_auto").apply(); reload()
             }, k.lp(top = 18))
         }
     }

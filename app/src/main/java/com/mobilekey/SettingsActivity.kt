@@ -156,24 +156,38 @@ class SettingsActivity : Activity() {
 
     private fun page(title: String, subtitle: String?, sticky: View? = null, fill: LinearLayout.() -> Unit): View {
         val root = k.column()
-        val bar = k.row().apply { setPadding(k.dp(12), k.dp(8), k.dp(16), k.dp(6)) }
-        bar.addView(k.text("←", 20f, p.fg, 500).apply {
-            gravity = Gravity.CENTER
+        val bar = k.row().apply { setPadding(k.dp(10), k.dp(6), k.dp(16), k.dp(6)); minimumHeight = k.dp(56) }
+        bar.addView(com.mobilekey.ui.IconView(this, "back", p.fg).apply {
             background = k.ripple(p.surface2, 99f)
             contentDescription = "Back"
             setOnClickListener { back() }
-        }, LinearLayout.LayoutParams(k.dp(44), k.dp(44)))
-        val titles = k.column().apply { setPadding(k.dp(14), 0, 0, 0) }
-        titles.addView(k.text(title, 26f, p.fg, 760, display = true))
-        if (subtitle != null) titles.addView(k.text(subtitle, 13.5f, p.muted))
-        bar.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }, LinearLayout.LayoutParams(k.dp(40), k.dp(40)))
+        val small = k.text(title, 17f, p.fg, 650).apply {
+            setPadding(k.dp(14), 0, 0, 0)
+            maxLines = 1
+            alpha = if (sticky != null) 1f else 0f
+        }
+        bar.addView(small, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(bar)
-        if (sticky != null) root.addView(sticky, k.lp(top = 6, bottom = 4).apply { leftMargin = k.dp(12); rightMargin = k.dp(12) })
+        if (sticky != null) root.addView(sticky, k.lp(top = 2, bottom = 6).apply { leftMargin = k.dp(12); rightMargin = k.dp(12) })
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             clipToPadding = false
+            overScrollMode = View.OVER_SCROLL_NEVER
         }
-        val col = k.column().apply { setPadding(k.dp(16), k.dp(2), k.dp(16), k.dp(48)) }
+        val col = k.column().apply { setPadding(k.dp(16), 0, k.dp(16), k.dp(56)) }
+        if (sticky == null) {
+            // Large title that hands over to the small one in the bar as you scroll.
+            col.addView(k.text(title, 32f, p.fg, 780, display = true).apply { setPadding(k.dp(4), k.dp(4), 0, 0) })
+            if (subtitle != null) col.addView(k.text(subtitle, 14.5f, p.muted).apply { setPadding(k.dp(4), k.dp(2), 0, k.dp(4)) })
+            scroll.setOnScrollChangeListener { _, _, y, _, _ ->
+                small.alpha = (y / k.dp(48).toFloat()).coerceIn(0f, 1f)
+                bar.elevation = if (y > k.dp(8)) k.dp(2).toFloat() else 0f
+            }
+            bar.setBackgroundColor(p.bg)
+        } else if (subtitle != null) {
+            col.addView(k.text(subtitle, 13.5f, p.muted).apply { setPadding(k.dp(4), k.dp(2), 0, 0) })
+        }
         col.fill()
         scroll.addView(col)
         root.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -195,9 +209,13 @@ class SettingsActivity : Activity() {
         divided(k.toggleRow(ft.title, ft.desc, f(id)) { setF(id, it); onChange() })
     }
 
-    /** A row of chips where exactly one is selected. */
+    /** One-of choice: a segmented control for a few short options, chips for longer lists. */
     private fun LinearLayout.choice(label: String, options: List<Pair<String, String>>, current: String, onPick: (String) -> Unit) {
         addView(k.eyebrow(label))
+        if (options.size <= 4 && options.all { it.second.length <= 11 }) {
+            addView(k.segmented(options, current, onPick), k.lp())
+            return
+        }
         val chips = ArrayList<TextView>()
         options.forEach { (id, name) ->
             chips.add(k.chip(name, id == current) {
@@ -214,94 +232,116 @@ class SettingsActivity : Activity() {
 
     // ---------- home ----------
 
-    private fun home(): View {
-        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
-        val col = k.column().apply { setPadding(k.dp(18), k.dp(18), k.dp(18), k.dp(48)) }
-        scroll.addView(col)
+    private class Link(val icon: String, val tint: Int, val title: String, val value: String, val page: String, val keywords: String = "")
 
-        col.addView(k.text("PRIVATE KEYBOARD", 11.5f, p.accent, 650).apply { letterSpacing = 0.14f })
-        col.addView(k.text("MyKey", 46f, p.fg, 800, display = true), k.lp(top = 2))
-        col.addView(k.text("Everything it learns stays on this phone.", 15f, p.muted), k.lp(top = 2, bottom = 18))
-
-        col.addView(statusCard(), k.lp(bottom = 12))
-        col.addView(k.field("Try typing here…"), k.lp(bottom = 8))
-
+    private fun links(): List<Pair<String, List<Link>>> {
+        fun c(h: String) = android.graphics.Color.parseColor(h)
         val themeName = prefs.getString("theme", "Graphite") ?: "Graphite"
         val langs = Langs.enabled(prefs).joinToString(", ") { Langs.names[it] ?: it }
         val typing = Features.all.filter { it.category == "Typing" }
         val learned = Langs.enabled(prefs).sumOf { user.allWords(it).size }
         val st = Stats.get(this)
-        val tiles = listOf(
-            Tile("Aa", "Look & size", "$themeName · ${prefs.getInt("scale", KbConfig.DEF_SCALE)}% size", "look"),
-            Tile("文", "Languages", langs, "languages"),
-            Tile("⌨", "Typing", "${typing.count { f(it.id) }} of ${typing.size} on", "typing"),
-            Tile("✓", "Autocorrect", if (f("autocorrect")) (if (f("ac_aggressive")) "On · aggressive" else "On") else "Off", "correction"),
-            Tile("☺", "Tools", "Emoji, clipboard, voice, one-handed", "tools"),
-            Tile("⋯", "Toolbar", "${Toolbar.visible(prefs).size} buttons above the keys", "toolbar"),
-            Tile("✦", "Learning", if (f("incognito")) "Incognito is on" else "$learned words learned", "learning"),
-            Tile("↦", "Shortcuts", "${user.allShortcuts().size} shortcuts", "shortcuts"),
-            Tile("{ }", "Layouts", "Edit keys as JSON", "layouts"),
-            Tile("⇡", "Hold keys", "Choose what each key gives on long-press", "longpress"),
-            Tile("▲", "Stats", "${st.get("words")} words · ${st.wpm()} wpm", "stats"),
-            Tile("⇅", "Backup", "Export or restore everything", "backup"),
+        return listOf(
+            "Keyboard" to listOf(
+                Link("brush", c("#FF6B4A"), "Look & size", "$themeName · ${prefs.getInt("scale", KbConfig.DEF_SCALE)}%", "look", "theme colour size height amoled oled font sound vibration background photo animation"),
+                Link("globe", c("#3D8BFF"), "Languages", langs, "languages", "english spanish russian japanese mandarin chinese layout qwerty switch"),
+                Link("keyboard", c("#8E6CFF"), "Typing", "${typing.count { f(it.id) }} of ${typing.size} on", "typing", "glide swipe gesture trackpad timing long-press backspace split"),
+                Link("check", c("#22B573"), "Autocorrect", if (f("autocorrect")) "On" else "Off", "correction", "spelling capital punctuation emoji calculator units date"),
+                Link("hold", c("#FF9F1C"), "Hold keys", "What each key gives on long-press", "longpress", "long press popup symbols accents hint"),
+            ),
+            "Tools" to listOf(
+                Link("toolbar", c("#FF4D8D"), "Toolbar", "${Toolbar.visible(prefs).size} buttons", "toolbar", "buttons order"),
+                Link("emoji", c("#00B3A4"), "Panels & chips", "Emoji, GIFs, clipboard, voice", "tools", "emoji gif clipboard snippets voice password email one-handed floating"),
+                Link("snippet", c("#E8A500"), "Shortcuts & snippets", "${user.allShortcuts().size} shortcuts", "shortcuts", "text expansion"),
+                Link("layout", c("#5A9BD4"), "Layouts", "Edit keys as JSON", "layouts", "json custom keys"),
+            ),
+            "You" to listOf(
+                Link("sparkle", c("#A259FF"), "Learning", if (f("incognito")) "Incognito is on" else "$learned words learned", "learning", "words dictionary incognito forget"),
+                Link("chart", c("#3A86FF"), "Stats", "${st.get("words")} words · ${st.wpm()} wpm", "stats", "speed"),
+                Link("shield", c("#2DBE60"), "Privacy", if (f("gif_search")) "Online only for GIF search" else "Fully offline", "privacy", "spell check lock screen"),
+                Link("backup", c("#8A8F98"), "Backup", "Export or restore everything", "backup", "export import file"),
+            ),
         )
-        tiles.chunked(2).forEach { pair ->
-            val r = k.row().apply { gravity = Gravity.TOP }
-            pair.forEachIndexed { i, t ->
-                r.addView(tile(t), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    if (i == 1) leftMargin = k.dp(10)
-                })
-            }
-            col.addView(r, k.lp(top = 10))
-        }
-        col.addView(k.row().apply {
-            background = k.ripple(p.surface, 22f)
-            setPadding(k.dp(18), k.dp(16), k.dp(18), k.dp(16))
-            addView(k.text("Privacy", 16f, p.fg, 600), LinearLayout.LayoutParams(0, -2, 1f))
-            addView(k.badge(if (f("gif_search")) "GIF SEARCH ONLINE" else "OFFLINE", p.accent))
-            setOnClickListener { open("privacy") }
-        }, k.lp(top = 10))
-        col.addView(k.text("Open these settings from the gear in the keyboard's toolbar, or from the language panel (long-press the globe key).", 13f, p.muted).apply {
-            gravity = Gravity.CENTER
-        }, k.lp(top = 22))
-        return scroll
     }
 
-    private class Tile(val glyph: String, val title: String, val summary: String, val page: String)
+    private val pageOf = mapOf("Typing" to "typing", "Correction" to "correction", "Learning" to "learning", "Look" to "look",
+        "Tools" to "tools", "Privacy" to "privacy", "Languages" to "languages")
 
-    private fun tile(t: Tile) = k.column().apply {
-        background = k.ripple(p.surface, 22f)
-        setPadding(k.dp(16), k.dp(16), k.dp(16), k.dp(16))
-        minimumHeight = k.dp(128)
-        addView(k.text(t.glyph, 17f, p.accent, 700, display = true).apply {
-            gravity = Gravity.CENTER
-            background = k.rounded(withAlpha(p.accent, 0x24), 99f)
-        }, LinearLayout.LayoutParams(k.dp(40), k.dp(40)))
-        addView(k.text(t.title, 16.5f, p.fg, 640), k.lp(top = 14))
-        addView(k.text(t.summary, 13f, p.muted).apply {
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-        }, k.lp(top = 2))
-        setOnClickListener { open(t.page) }
+    private fun home(): View {
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
+        val col = k.column().apply { setPadding(k.dp(16), k.dp(14), k.dp(16), k.dp(56)) }
+        scroll.addView(col)
+
+        val head = k.row().apply { setPadding(k.dp(4), 0, k.dp(4), 0) }
+        head.addView(k.text("MyKey", 36f, p.fg, 800, display = true), LinearLayout.LayoutParams(0, -2, 1f))
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+        val active = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)?.startsWith(packageName) == true
+        head.addView(k.row().apply {
+            background = k.rounded(if (active) withAlpha(p.accent, 0x22) else withAlpha(p.danger, 0x22), 99f)
+            setPadding(k.dp(10), k.dp(5), k.dp(12), k.dp(5))
+            addView(View(this@SettingsActivity).apply { background = k.rounded(if (active) p.accent else p.danger, 99f) }, LinearLayout.LayoutParams(k.dp(7), k.dp(7)))
+            addView(k.text(if (active) "Active" else "Not set up", 13f, if (active) p.accent else p.danger, 650).apply { setPadding(k.dp(6), 0, 0, 0) })
+        })
+        col.addView(head)
+        col.addView(k.text("Private keyboard. Everything it learns stays on this phone.", 14.5f, p.muted).apply { setPadding(k.dp(4), k.dp(2), 0, k.dp(14)) })
+        if (!active) col.addView(statusCard(), k.lp(bottom = 12))
+
+        val search = k.field("Search settings").apply {
+            setCompoundDrawablesRelative(null, null, null, null)
+            background = k.rounded(p.surface2, 14f)
+            setPadding(k.dp(16), k.dp(12), k.dp(16), k.dp(12))
+        }
+        col.addView(search, k.lp(bottom = 8))
+        val groupsBox = k.column()
+        val results = k.column()
+        col.addView(results)
+        col.addView(groupsBox)
+
+        links().forEach { (group, items) ->
+            groupsBox.addView(k.eyebrow(group))
+            val card = k.card()
+            items.forEach { l -> k.addDivided(card, k.linkRow(l.icon, l.tint, l.title, l.value) { open(l.page) }) }
+            groupsBox.addView(card, k.lp())
+        }
+        groupsBox.addView(k.eyebrow("Try it"))
+        groupsBox.addView(k.field("Type here to test MyKey…"), k.lp())
+        groupsBox.addView(k.text("Open settings from the gear in the keyboard's toolbar, or long-press the globe key.", 13f, p.muted).apply {
+            gravity = Gravity.CENTER; setPadding(k.dp(24), k.dp(22), k.dp(24), 0)
+        })
+
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(e: Editable?) {
+                val q = e.toString().trim().lowercase()
+                results.removeAllViews()
+                groupsBox.visibility = if (q.isEmpty()) View.VISIBLE else View.GONE
+                if (q.isEmpty()) return
+                val all = links().flatMap { it.second }
+                val card = k.card()
+                all.filter { it.title.lowercase().contains(q) || it.keywords.contains(q) }.forEach { l ->
+                    k.addDivided(card, k.linkRow(l.icon, l.tint, l.title, l.value) { open(l.page) })
+                }
+                Features.all.filter { it.title.lowercase().contains(q) || it.desc.lowercase().contains(q) }.take(12).forEach { ft ->
+                    val target = if (ft.id in setOf("number_row", "hints", "key_preview")) "look" else pageOf[ft.category] ?: "home"
+                    val link = all.firstOrNull { it.page == target }
+                    k.addDivided(card, k.linkRow(link?.icon ?: "settings", link?.tint ?: p.muted, ft.title, link?.title ?: "") { open(target) })
+                }
+                if (card.childCount == 0) card.addView(k.text("Nothing matches “$q”.", 14.5f, p.muted).apply { setPadding(0, k.dp(18), 0, k.dp(18)) })
+                results.addView(k.eyebrow("Results"))
+                results.addView(card, k.lp())
+            }
+        })
+        return scroll
     }
 
     private fun statusCard(): View {
         val imm = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
         val enabled = imm.enabledInputMethodList.any { it.packageName == packageName }
-        val current = Settings.Secure.getString(contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD)
-            ?.startsWith(packageName) == true
-        if (current) {
-            return k.row().apply {
-                background = k.rounded(withAlpha(p.accent, 0x1c), 22f)
-                setPadding(k.dp(18), k.dp(16), k.dp(18), k.dp(16))
-                addView(View(this@SettingsActivity).apply { background = k.rounded(p.accent, 99f) }, LinearLayout.LayoutParams(k.dp(10), k.dp(10)))
-                addView(k.text("MyKey is your keyboard", 15.5f, p.fg, 600).apply { setPadding(k.dp(12), 0, 0, 0) })
-            }
-        }
         return k.column().apply {
-            background = k.rounded(p.accent, 24f)
+            background = k.rounded(p.accent, 20f)
             setPadding(k.dp(20), k.dp(18), k.dp(20), k.dp(20))
-            addView(k.text(if (enabled) "One step left" else "Two steps to start", 22f, p.accentFg, 760, display = true))
+            addView(k.text(if (enabled) "One step left" else "Two steps to start", 21f, p.accentFg, 760, display = true))
             addView(k.text(
                 if (enabled) "MyKey is turned on. Switch to it to start typing."
                 else "Turn MyKey on in system settings, then switch to it.",
@@ -803,7 +843,6 @@ class SettingsActivity : Activity() {
         val layouts = listOf(Langs.layoutFor("en", prefs) to "English", "es" to "Español", "ru" to "Русский", "symbols" to "Symbols")
         var layout = Langs.layoutFor("en", prefs)
         var key: String? = null
-        val title = k.text("Tap a key above to edit it", 17f, p.fg, 700, display = true)
         val editor = k.column()
 
         fun loadPreview() {
@@ -812,76 +851,101 @@ class SettingsActivity : Activity() {
         }
         fun currentKey(): Key? = key?.let { kk -> Layouts.load(this, layout, f("custom_layouts")).rows.flatten().firstOrNull { it.type == null && it.out == kk } }
 
-        lateinit var renderEditor: () -> Unit
-        renderEditor = {
+        lateinit var render: () -> Unit
+        render = render@{
             editor.removeAllViews()
             val kk = key
             val cur = currentKey()
             if (kk == null || cur == null) {
-                title.text = "Tap a key above to edit it"
-            } else {
-                title.text = "Key  “$kk”" + if (LongPress.has(prefs, layout, kk)) "  · edited" else ""
-                val opts = cur.long.toMutableList()
-                fun save(hint: String? = cur.hint) { LongPress.set(prefs, layout, kk, opts, hint); loadPreview(); renderEditor() }
-
-                editor.addView(k.eyebrow("Long-press options · tap one to move or remove it"))
-                val chips = ArrayList<View>()
-                var picked = -1
-                val actions = k.row()
-                opts.forEachIndexed { i, o ->
-                    chips.add(k.chip(o, false) {
-                        picked = i
-                        chips.forEachIndexed { j, c -> (c as TextView).apply {
-                            setTextColor(if (j == i) p.accentFg else p.fg); background = k.ripple(if (j == i) p.accent else p.surface2, 99f) } }
-                        actions.visibility = View.VISIBLE
-                    })
-                }
-                if (opts.isEmpty()) editor.addView(k.text("No long-press options. Add some below.", 14f, p.muted))
-                else editor.addView(k.chipRow(chips))
-                actions.visibility = View.GONE
-                fun act(label: String, kind: String, f: () -> Unit) = k.button(label, kind) { f() }
-                actions.addView(act("←", "secondary") { if (picked > 0) { opts.add(picked - 1, opts.removeAt(picked)); save() } }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(6) })
-                actions.addView(act("→", "secondary") { if (picked in 0 until opts.size - 1) { opts.add(picked + 1, opts.removeAt(picked)); save() } }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(6) })
-                actions.addView(act("Remove", "danger") { if (picked >= 0) { opts.removeAt(picked); save() } }, LinearLayout.LayoutParams(0, -2, 2f))
-                editor.addView(actions, k.lp(top = 10))
-
-                editor.addView(k.eyebrow("Add options"))
-                val add = k.row()
-                val field = k.field("Type characters, e.g. ¿¡ or a word")
-                add.addView(field, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(8) })
-                add.addView(k.button("Add") {
-                    val t = field.text.toString().trim()
-                    if (t.isNotEmpty()) {
-                        // Several single characters become separate options; a word stays one option.
-                        val parts = if (t.contains(' ')) t.split(' ').filter { it.isNotEmpty() }
-                            else if (t.codePointCount(0, t.length) <= 6) t.codePoints().toArray().map { String(Character.toChars(it)) } else listOf(t)
-                        opts.addAll(parts.filter { it !in opts }); save()
-                    }
-                })
-                editor.addView(add)
-                editor.addView(k.text("Tip: separate words with spaces to add several at once.", 12.5f, p.muted), k.lp(top = 4))
-
-                val hintOpts = listOf("\u0000" to "First option", "" to "No hint") + opts.map { it to it }
-                val curHint = when (cur.hint) { null -> "\u0000"; else -> cur.hint }
-                editor.addView(k.eyebrow("Small hint on the key"))
-                val hintChips = ArrayList<TextView>()
-                hintOpts.forEach { (id, label) ->
-                    hintChips.add(k.chip(label, id == curHint) { save(if (id == "\u0000") null else id) })
-                }
-                editor.addView(k.chipRow(hintChips))
-
-                editor.addView(k.button("Reset this key", "secondary") { LongPress.reset(prefs, layout, kk); loadPreview(); renderEditor() }, k.lp(top = 16))
+                editor.addView(k.column().apply {
+                    background = k.rounded(p.surface, 20f)
+                    setPadding(k.dp(20), k.dp(26), k.dp(20), k.dp(26))
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    addView(k.iconTile("hold", p.accent, 44))
+                    addView(k.text("Tap a key on the keyboard above", 17f, p.fg, 650).apply { gravity = Gravity.CENTER }, k.lp(top = 12))
+                    addView(k.text("You'll choose what appears when you hold it, in what order, and which one shows as the small hint.", 14f, p.muted).apply { gravity = Gravity.CENTER }, k.lp(top = 4))
+                }, k.lp(top = 12))
+                return@render
             }
+            val opts = cur.long.toMutableList()
+            var hint: String? = cur.hint
+            fun save() { LongPress.set(prefs, layout, kk, opts, hint); loadPreview() }
+
+            val card = k.card().apply { setPadding(k.dp(18), k.dp(16), k.dp(18), k.dp(16)) }
+            val head = k.row()
+            head.addView(k.text(kk, 22f, p.accentFg, 700, display = true).apply {
+                gravity = Gravity.CENTER; background = k.rounded(p.accent, 12f)
+            }, LinearLayout.LayoutParams(k.dp(44), k.dp(44)))
+            head.addView(k.column().apply {
+                setPadding(k.dp(12), 0, 0, 0)
+                addView(k.text("Hold “$kk”", 17f, p.fg, 650))
+                addView(k.text(if (LongPress.has(prefs, layout, kk)) "Edited · ${opts.size} options" else "${opts.size} options", 13f, p.muted))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
+            head.addView(k.text("Reset", 14f, p.accent, 650).apply {
+                setPadding(k.dp(12), k.dp(8), k.dp(4), k.dp(8))
+                setOnClickListener { LongPress.reset(prefs, layout, kk); loadPreview(); render() }
+            })
+            card.addView(head)
+
+            // Chips: drag to reorder, tap to make it the hint, × to remove, + to add.
+            val strip = k.row().apply { setPadding(0, k.dp(14), 0, k.dp(4)) }
+            val addField = k.field("Type characters or words, then Add").apply { visibility = View.GONE }
+            val addBtn = k.button("Add") {}.apply { visibility = View.GONE }
+            val drag = com.mobilekey.ui.DragReorder(strip, skip = { it.tag == "add" }) { from, to ->
+                opts.add(to, opts.removeAt(from)); save()
+            }
+            opts.forEach { o ->
+                val isHint = (hint ?: opts.firstOrNull()) == o && hint != ""
+                val chip = k.row().apply {
+                    background = if (isHint) k.rounded(withAlpha(p.accent, 0x26), 99f, p.accent) else k.rounded(p.surface2, 99f)
+                    setPadding(k.dp(14), 0, k.dp(6), 0)
+                    addView(k.text(o, 17f, p.fg, 560))
+                    addView(com.mobilekey.ui.IconView(this@SettingsActivity, "close", p.muted).apply {
+                        contentDescription = "Remove $o"
+                        setOnClickListener { opts.remove(o); if (hint == o) hint = null; save(); render() }
+                    }, LinearLayout.LayoutParams(k.dp(28), k.dp(28)))
+                    setOnClickListener { hint = o; save(); render() }
+                }
+                strip.addView(chip, LinearLayout.LayoutParams(-2, k.dp(40)).apply { rightMargin = k.dp(8) })
+                drag.attach(chip, chip, immediate = false)
+            }
+            strip.addView(com.mobilekey.ui.IconView(this, "plus", p.accent).apply {
+                tag = "add"
+                contentDescription = "Add option"
+                background = k.rounded(withAlpha(p.accent, 0x1f), 99f)
+                setOnClickListener { addField.visibility = View.VISIBLE; addBtn.visibility = View.VISIBLE; addField.requestFocus() }
+            }, LinearLayout.LayoutParams(k.dp(40), k.dp(40)))
+            card.addView(android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(strip) })
+            card.addView(k.text("Hold and drag to reorder · tap to use as the key's hint · × removes", 12.5f, p.muted), k.lp(top = 6))
+
+            val addRow = k.row().apply { setPadding(0, k.dp(12), 0, 0) }
+            addRow.addView(addField, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(8) })
+            addBtn.setOnClickListener {
+                val t = addField.text.toString().trim()
+                if (t.isNotEmpty()) {
+                    val parts = if (t.contains(' ')) t.split(' ').filter { it.isNotEmpty() }
+                        else if (t.codePointCount(0, t.length) <= 6) t.codePoints().toArray().map { String(Character.toChars(it)) } else listOf(t)
+                    opts.addAll(parts.filter { it !in opts }); save(); render()
+                }
+            }
+            addRow.addView(addBtn)
+            card.addView(addRow)
+            editor.addView(card, k.lp(top = 12))
+
+            val hintCard = k.card()
+            hintCard.addView(k.toggleRow("Show a hint on the key", "The small character in the corner of the key.", hint != "") { on ->
+                hint = if (on) null else ""; save(); render()
+            })
+            editor.addView(hintCard, k.lp(top = 12))
         }
 
-        pv.onKeyTap = { t -> key = t.lowercase().takeIf { s2 -> currentKeyExists(layout, s2) } ?: t; renderEditor() }
+        pv.onKeyTap = { t -> key = t.lowercase().takeIf { s2 -> currentKeyExists(layout, s2) } ?: t; render() }
         loadPreview()
-        return page("Hold keys", "Tap a key on the keyboard to edit its long-press.", pv.box) {
-            choice("Layout", layouts, layout) { layout = it; key = null; loadPreview(); renderEditor() }
-            addView(title, k.lp(top = 16, bottom = 4))
+        return page("Hold keys", "Tap a key above to edit what it gives on long-press.", pv.box) {
+            choice("Layout", layouts, layout) { layout = it; key = null; loadPreview(); render() }
             addView(editor, k.lp())
-            renderEditor()
-            addView(k.button("Reset all keys in this layout", "danger") { LongPress.reset(prefs, layout, null); key = null; loadPreview(); renderEditor() }, k.lp(top = 22))
+            render()
+            addView(k.button("Reset every key in this layout", "secondary") { LongPress.reset(prefs, layout, null); key = null; loadPreview(); render() }, k.lp(top = 22))
         }
     }
 
@@ -896,60 +960,54 @@ class SettingsActivity : Activity() {
         }
         fun refreshPreview() {
             previewRow.removeAllViews()
-            previewRow.addView(com.mobilekey.ui.IconView(this, "grid", theme.fg), LinearLayout.LayoutParams(k.dp(40), k.dp(48)))
+            previewRow.addView(com.mobilekey.ui.IconView(this, "grid", theme.fg), LinearLayout.LayoutParams(k.dp(40), k.dp(50)))
             Toolbar.visible(prefs).forEach { item ->
-                previewRow.addView(com.mobilekey.ui.IconView(this, item.icon, theme.fg), LinearLayout.LayoutParams(0, k.dp(48), 1f))
+                previewRow.addView(com.mobilekey.ui.IconView(this, item.icon, theme.fg), LinearLayout.LayoutParams(0, k.dp(50), 1f))
             }
         }
         refreshPreview()
-        return page("Toolbar", "The row of buttons above the keys.", previewRow) {
-            section("Toolbar") {
+        return page("Toolbar", "Drag ≡ to reorder, switch to show or hide.", previewRow) {
+            section("Behaviour") {
                 toggles("quick_toolbar")
                 divided(k.toggleRow("Show automatically", "When there's nothing to suggest. Off: only when you tap the grid button.",
                     prefs.getBoolean("toolbar_auto", true)) { prefs.edit().putBoolean("toolbar_auto", it).apply() })
             }
-            addView(k.eyebrow("Buttons · switch on or off, arrows to reorder"))
-            val list = k.card()
-            fun render() {
-                list.removeAllViews()
-                val order = Toolbar.order(prefs).toMutableList()
-                val hidden = Toolbar.hidden(prefs)
-                order.forEachIndexed { i, item ->
-                    val featureOff = item.feature != null && !f(item.feature)
-                    val r = k.row().apply { setPadding(0, k.dp(8), 0, k.dp(8)) }
-                    r.addView(com.mobilekey.ui.IconView(this@SettingsActivity, item.icon, p.fg), LinearLayout.LayoutParams(k.dp(36), k.dp(36)))
-                    val texts = k.column().apply { setPadding(k.dp(10), 0, k.dp(6), 0) }
-                    texts.addView(k.text(item.name, 15.5f, p.fg, 520))
-                    if (featureOff) texts.addView(k.text("Feature is off in Tools", 12.5f, p.muted))
-                    r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
-                    fun arrow(label: String, enabled: Boolean, move: Int) = k.text(label, 18f, if (enabled) p.fg else p.line, 600).apply {
-                        gravity = Gravity.CENTER
-                        if (enabled) {
-                            background = k.ripple(p.surface2, 99f)
-                            setOnClickListener {
-                                val it2 = order.removeAt(i); order.add(i + move, it2)
-                                Toolbar.setOrder(prefs, order); render(); refreshPreview()
-                            }
-                        }
-                    }
-                    r.addView(arrow("↑", i > 0, -1), LinearLayout.LayoutParams(k.dp(36), k.dp(36)).apply { rightMargin = k.dp(4) })
-                    r.addView(arrow("↓", i < order.size - 1, 1), LinearLayout.LayoutParams(k.dp(36), k.dp(36)).apply { rightMargin = k.dp(8) })
-                    r.addView(com.mobilekey.ui.Toggle(this@SettingsActivity, p).apply {
-                        set(item.id !in hidden, false)
-                        onChange = { on -> Toolbar.setHidden(prefs, item.id, !on); refreshPreview() }
-                    })
-                    k.addDivided(list, r)
+            addView(k.eyebrow("Buttons"))
+            val list = k.column().apply { background = k.rounded(p.surface, 20f); setPadding(k.dp(10), k.dp(6), k.dp(6), k.dp(6)) }
+            val hidden = Toolbar.hidden(prefs)
+            val order = Toolbar.order(prefs).toMutableList()
+            val drag = com.mobilekey.ui.DragReorder(list) { from, to ->
+                order.add(to, order.removeAt(from)); Toolbar.setOrder(prefs, order); refreshPreview()
+            }
+            order.forEach { item ->
+                val featureOff = item.feature != null && !f(item.feature)
+                val r = k.row().apply {
+                    setPadding(k.dp(6), k.dp(6), 0, k.dp(6))
+                    minimumHeight = k.dp(56)
+                    background = k.rounded(p.surface, 14f)
                 }
+                r.addView(k.iconTile(item.icon, if (featureOff) p.line else p.accent, 34).apply { alpha = if (featureOff) 0.6f else 1f })
+                val texts = k.column().apply { setPadding(k.dp(12), 0, k.dp(6), 0) }
+                texts.addView(k.text(item.name, 15.5f, p.fg, 560))
+                if (featureOff) texts.addView(k.text("Turned off in Panels & chips", 12.5f, p.muted))
+                r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+                r.addView(com.mobilekey.ui.Toggle(this@SettingsActivity, p).apply {
+                    set(item.id !in hidden, false)
+                    onChange = { on -> Toolbar.setHidden(prefs, item.id, !on); refreshPreview() }
+                })
+                val handle = com.mobilekey.ui.IconView(this@SettingsActivity, "drag", p.muted).apply { contentDescription = "Drag to reorder ${item.name}" }
+                r.addView(handle, LinearLayout.LayoutParams(k.dp(44), k.dp(44)).apply { leftMargin = k.dp(6) })
+                list.addView(r, LinearLayout.LayoutParams(-1, -2))
+                drag.attach(handle, r, immediate = true)
             }
             addView(list, k.lp())
-            render()
             addView(k.button("Reset toolbar", "secondary") {
                 prefs.edit().remove("toolbar_order").remove("toolbar_hidden").remove("toolbar_auto").apply(); reload()
             }, k.lp(top = 18))
         }
     }
 
-    private fun tools(): View = page("Tools", "Panels and modes from the toolbar.") {
+    private fun tools(): View = page("Panels & chips", "Emoji, GIFs, clipboard, voice and smart chips.") {
         section("Toolbar and panels") { toggles("quick_toolbar", "emoji", "gifs", "clipboard", "clip_autoclear", "paste_chip", "snippets", "edit_toolbar", "undo_redo", "tool_theme", "tool_resize") }
         section("Smart chips") { toggles("sel_chips", "autofill_chips", "email_chips", "pass_gen") }
         section("Online GIF search") {

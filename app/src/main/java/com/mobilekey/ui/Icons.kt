@@ -113,6 +113,54 @@ class IconView(ctx: Context, var icon: String, var color: Int) : View(ctx) {
                 }
                 c.drawText("GIF", 12f, 15f, tp)
             }
+            "globe" -> {
+                c.drawCircle(12f, 12f, 9f, p); c.drawOval(8f, 3f, 16f, 21f, p); c.drawLine(3f, 12f, 21f, 12f, p)
+            }
+            "keyboard" -> {
+                c.drawRoundRect(RectF(2.5f, 6f, 21.5f, 18f), 2.5f, 2.5f, p)
+                for (x in listOf(6.5f, 10f, 13.5f, 17f)) fillDot(c, x, 10f, 1.1f)
+                c.drawLine(8f, 14.5f, 16f, 14.5f, p)
+            }
+            "check" -> {
+                val path = Path().apply { moveTo(5f, 12.5f); lineTo(10f, 17.5f); lineTo(19.5f, 7f) }
+                c.drawPath(path, p)
+            }
+            "hold" -> {
+                c.drawRoundRect(RectF(4f, 11f, 20f, 21f), 2.5f, 2.5f, p)
+                c.drawRoundRect(RectF(7f, 3f, 17f, 8.5f), 2f, 2f, p)
+                c.drawLine(12f, 8.5f, 12f, 11f, p)
+            }
+            "layout" -> {
+                c.drawRoundRect(RectF(3f, 4f, 21f, 20f), 2.5f, 2.5f, p)
+                c.drawLine(3f, 9.5f, 21f, 9.5f, p); c.drawLine(9.5f, 9.5f, 9.5f, 20f, p)
+            }
+            "chart" -> {
+                c.drawLine(5f, 20f, 5f, 13f, p); c.drawLine(10f, 20f, 10f, 8f, p); c.drawLine(15f, 20f, 15f, 11f, p); c.drawLine(20f, 20f, 20f, 4f, p)
+            }
+            "shield" -> {
+                val path = Path().apply { moveTo(12f, 3f); lineTo(19.5f, 6f); lineTo(19f, 12.5f); quadTo(18f, 18.5f, 12f, 21f); quadTo(6f, 18.5f, 5f, 12.5f); lineTo(4.5f, 6f); close() }
+                c.drawPath(path, p)
+            }
+            "backup" -> {
+                c.drawArc(RectF(4f, 4f, 20f, 20f), 210f, 290f, false, p)
+                val head = Path().apply { moveTo(4.5f, 7f); lineTo(5.6f, 11.4f); lineTo(9.6f, 9.8f) }
+                c.drawPath(head, p); c.drawLine(12f, 8f, 12f, 12.5f, p); c.drawLine(12f, 12.5f, 15f, 14.5f, p)
+            }
+            "sparkle" -> {
+                val path = Path().apply { moveTo(12f, 3f); quadTo(13f, 11f, 21f, 12f); quadTo(13f, 13f, 12f, 21f); quadTo(11f, 13f, 3f, 12f); quadTo(11f, 11f, 12f, 3f); close() }
+                c.drawPath(path, p)
+            }
+            "toolbar" -> {
+                c.drawRoundRect(RectF(2.5f, 8f, 21.5f, 16f), 4f, 4f, p)
+                for (x in listOf(7f, 12f, 17f)) fillDot(c, x, 12f, 1.3f)
+            }
+            "brush" -> {
+                c.drawLine(19.5f, 4.5f, 10f, 14f, p)
+                val tip = Path().apply { moveTo(10f, 14f); quadTo(6f, 13.5f, 5f, 18f); quadTo(4.5f, 20f, 3f, 20.5f); quadTo(9f, 21.5f, 10.5f, 17f); close() }
+                c.drawPath(tip, p)
+            }
+            "drag" -> { c.drawLine(5f, 8f, 19f, 8f, p); c.drawLine(5f, 12f, 19f, 12f, p); c.drawLine(5f, 16f, 19f, 16f, p) }
+            "plus" -> { c.drawLine(12f, 5f, 12f, 19f, p); c.drawLine(5f, 12f, 19f, 12f, p) }
             "grid" -> {
                 for (x in listOf(6f, 12f, 18f)) for (y in listOf(6f, 12f, 18f)) fillDot(c, x, y, 1.6f)
             }

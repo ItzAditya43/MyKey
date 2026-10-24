@@ -20,9 +20,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.SeekBar
 import android.widget.TextView
 import com.mobilekey.KbTheme
 
@@ -37,11 +37,11 @@ class Palette(
             val dark = (ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
                 Configuration.UI_MODE_NIGHT_YES
             return if (dark) Palette(
-                c("#0E1210"), c("#161C19"), c("#1F2723"), c("#29332E"),
-                c("#ECF2EE"), c("#8E9C94"), c("#3FD0B0"), c("#06231C"), c("#FF8A7A"), true,
+                c("#0A0C0B"), c("#141716"), c("#1D2120"), c("#262B29"),
+                c("#F1F4F2"), c("#8D9792"), c("#3FD0B0"), c("#03211A"), c("#FF7B6B"), true,
             ) else Palette(
-                c("#F2F4F1"), c("#FFFFFF"), c("#E7ECE6"), c("#DADFD8"),
-                c("#16201B"), c("#5B6961"), c("#0E7C66"), c("#FFFFFF"), c("#C2412D"), false,
+                c("#F3F4F1"), c("#FFFFFF"), c("#ECEEEA"), c("#E2E5E0"),
+                c("#121815"), c("#6A736E"), c("#0E7C66"), c("#FFFFFF"), c("#C2412D"), false,
             )
         }
         private fun c(s: String) = Color.parseColor(s)
@@ -201,29 +201,32 @@ class Kit(val ctx: Context, val p: Palette) {
             setLineSpacing(0f, 1.15f)
         }
 
-    fun eyebrow(s: String) = text(s.uppercase(), 11.5f, p.muted, 600).apply {
-        letterSpacing = 0.12f
-        setPadding(dp(4), dp(22), 0, dp(8))
+    fun eyebrow(s: String) = text(s.uppercase(), 12f, p.muted, 620).apply {
+        letterSpacing = 0.09f
+        setPadding(dp(18), dp(26), dp(18), dp(8))
     }
 
     fun card() = column().apply {
-        background = rounded(p.surface, 22f)
-        setPadding(dp(18), dp(6), dp(18), dp(6))
+        background = rounded(p.surface, 20f)
+        setPadding(dp(18), dp(2), dp(18), dp(2))
         clipToOutline = true
     }
 
     fun divider() = View(ctx).apply { setBackgroundColor(p.line) }
 
     fun addDivided(parent: LinearLayout, child: View) {
-        if (parent.childCount > 0) parent.addView(divider(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1))
+        if (parent.childCount > 0) parent.addView(divider().apply { tag = "div" }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply {
+            // Rows with an icon tile get a divider that starts after the icon.
+            if (child.tag == "inset") leftMargin = dp(46)
+        })
         parent.addView(child, lp())
     }
 
     fun toggleRow(title: String, desc: String, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit): LinearLayout {
-        val r = row().apply { setPadding(0, dp(14), 0, dp(14)) }
+        val r = row().apply { setPadding(0, dp(13), 0, dp(13)); minimumHeight = dp(58) }
         val texts = column()
-        texts.addView(text(title, 16f, p.fg, 520))
-        if (desc.isNotEmpty()) texts.addView(text(desc, 13.5f, p.muted), lp(top = 2))
+        texts.addView(text(title, 16f, p.fg, 540))
+        if (desc.isNotEmpty()) texts.addView(text(desc, 13.5f, p.muted), lp(top = 1))
         r.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(14) })
         val t = Toggle(ctx, p).apply {
             set(checked, false)
@@ -243,34 +246,64 @@ class Kit(val ctx: Context, val p: Palette) {
     }
 
     fun slider(title: String, unit: String, min: Int, max: Int, value: Int, onChange: (Int) -> Unit): LinearLayout {
-        val box = column().apply { setPadding(0, dp(14), 0, dp(8)) }
+        val box = column().apply { setPadding(0, dp(14), 0, dp(12)) }
         val head = row()
-        head.addView(text(title, 16f, p.fg, 520), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val pill = text("$value $unit", 13f, p.accent, 650).apply {
-            background = rounded(withAlpha(p.accent, 0x22), 99f)
-            setPadding(dp(10), dp(3), dp(10), dp(3))
-        }
-        head.addView(pill)
+        head.addView(text(title, 16f, p.fg, 540), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val valueText = text("$value $unit".trim(), 14f, p.accent, 680)
+        head.addView(valueText)
         box.addView(head)
-        box.addView(SeekBar(ctx).apply {
-            this.min = min
-            this.max = max
-            progress = value
-            progressTintList = ColorStateList.valueOf(p.accent)
-            thumbTintList = ColorStateList.valueOf(p.accent)
-            progressBackgroundTintList = ColorStateList.valueOf(p.line)
-            setPadding(dp(4), dp(10), dp(4), dp(6))
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(s: SeekBar?, v: Int, fromUser: Boolean) {
-                    pill.text = "$v $unit"
-                    if (fromUser && v % 2 == 0) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    onChange(v)
-                }
-                override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) {}
-            })
-        }, lp(top = 4))
+        box.addView(Slider(ctx, p, min, max, value) { v -> valueText.text = "$v $unit".trim(); onChange(v) }, lp(h = dp(36), top = 6))
         return box
+    }
+
+    /** Segmented control for 2–4 short choices, with a sliding highlight. */
+    fun segmented(options: List<Pair<String, String>>, current: String, onPick: (String) -> Unit): View {
+        val bar = FrameLayout(ctx).apply { background = rounded(p.surface2, 14f); setPadding(dp(4), dp(4), dp(4), dp(4)) }
+        val pill = View(ctx).apply { background = rounded(p.surface, 11f); elevation = dp(2).toFloat() }
+        val row = row()
+        bar.addView(pill, FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT))
+        bar.addView(row, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)))
+        var sel = options.indexOfFirst { it.first == current }.coerceAtLeast(0)
+        val labels = ArrayList<TextView>()
+        fun place(animate: Boolean) {
+            val w = (row.width / options.size.toFloat())
+            pill.layoutParams = (pill.layoutParams as FrameLayout.LayoutParams).apply { width = w.toInt() }
+            if (animate) pill.animate().translationX(w * sel).setDuration(220).setInterpolator(DecelerateInterpolator(2f)).start()
+            else pill.translationX = w * sel
+            labels.forEachIndexed { i, t -> t.setTextColor(if (i == sel) p.fg else p.muted); t.typeface = Fonts.body(ctx, if (i == sel) 650 else 500) }
+        }
+        options.forEachIndexed { i, (id, label) ->
+            val t = text(label, 14f, p.muted, 500).apply {
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                setOnClickListener { if (sel != i) { sel = i; place(true); performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); onPick(id) } }
+            }
+            labels.add(t)
+            row.addView(t, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        }
+        row.addOnLayoutChangeListener { _, l, _, r, _, ol, _, or, _ -> if (r - l != or - ol) row.post { place(false) } }
+        return bar
+    }
+
+    /** Rounded coloured square with a line icon, for list rows. */
+    fun iconTile(icon: String, tint: Int, size: Int = 32): View = IconView(ctx, icon, Color.WHITE).apply {
+        background = rounded(tint, 9f)
+        layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
+    }
+
+    /** Settings list row: icon tile, title, current value, chevron. */
+    fun linkRow(icon: String, tint: Int, title: String, value: String, onClick: () -> Unit) = row().apply {
+        tag = "inset"
+        setPadding(0, dp(10), 0, dp(10))
+        minimumHeight = dp(56)
+        addView(iconTile(icon, tint))
+        val texts = column().apply { setPadding(dp(14), 0, dp(8), 0) }
+        texts.addView(text(title, 16f, p.fg, 560))
+        if (value.isNotEmpty()) texts.addView(text(value, 13f, p.muted).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+        addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(text("›", 22f, p.line, 400))
+        setOnClickListener { onClick() }
     }
 
     fun button(label: String, kind: String = "primary", onClick: (TextView) -> Unit) = text(label, 15f, when (kind) {
@@ -319,5 +352,142 @@ class Kit(val ctx: Context, val p: Palette) {
         letterSpacing = 0.06f
         background = rounded(withAlpha(color, 0x22), 99f)
         setPadding(dp(8), dp(2), dp(8), dp(2))
+    }
+}
+
+/** Smooth slider: rounded track, accent fill, soft white thumb that grows while dragging. */
+class Slider(ctx: Context, private val p: Palette, private val min: Int, private val max: Int, value: Int, private val onChange: (Int) -> Unit) : View(ctx) {
+    private var v = value.coerceIn(min, max)
+    private val d = resources.displayMetrics.density
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var dragging = false
+    private var grow = 0f
+
+    init { isClickable = true }
+
+    private fun xFor(value: Int): Float {
+        val pad = 12 * d
+        return pad + (width - 2 * pad) * (value - min) / (max - min).toFloat().coerceAtLeast(1f)
+    }
+
+    override fun onDraw(c: Canvas) {
+        val cy = height / 2f
+        val pad = 12 * d
+        paint.color = p.line
+        c.drawRoundRect(pad, cy - 3 * d, width - pad, cy + 3 * d, 3 * d, 3 * d, paint)
+        val x = xFor(v)
+        paint.color = p.accent
+        c.drawRoundRect(pad, cy - 3 * d, x, cy + 3 * d, 3 * d, 3 * d, paint)
+        val r = (10 + 3 * grow) * d
+        paint.color = 0x33000000
+        c.drawCircle(x, cy + 1.5f * d, r + 1 * d, paint)
+        paint.color = if (p.dark) 0xFFF1F4F2.toInt() else Color.WHITE
+        c.drawCircle(x, cy, r, paint)
+        paint.color = p.accent
+        c.drawCircle(x, cy, 3.5f * d, paint)
+    }
+
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        when (e.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> { parent?.requestDisallowInterceptTouchEvent(true); dragging = true; animateGrow(1f); update(e.x) }
+            android.view.MotionEvent.ACTION_MOVE -> update(e.x)
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> { dragging = false; animateGrow(0f); parent?.requestDisallowInterceptTouchEvent(false) }
+        }
+        return true
+    }
+
+    private fun update(x: Float) {
+        val pad = 12 * d
+        val nv = (min + ((x - pad) / (width - 2 * pad)).coerceIn(0f, 1f) * (max - min) + 0.5f).toInt()
+        if (nv != v) {
+            v = nv
+            if ((max - min) <= 40 || v % 2 == 0) performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            onChange(v)
+            invalidate()
+        }
+    }
+
+    private fun animateGrow(to: Float) {
+        ValueAnimator.ofFloat(grow, to).apply {
+            duration = 140
+            addUpdateListener { grow = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+}
+
+/**
+ * Drag-to-reorder for the children of a LinearLayout (vertical or horizontal).
+ * Call [attach] on each child's drag handle; [onMoved] gets (from, to) when an item is dropped in a new place.
+ */
+class DragReorder(private val list: LinearLayout, private val skip: (View) -> Boolean = { false }, private val onMoved: (Int, Int) -> Unit) {
+    private val vertical = list.orientation == LinearLayout.VERTICAL
+
+    fun attach(handle: View, item: View, immediate: Boolean) {
+        var start = 0f
+        var startIndex = -1
+        var dragging = false
+        val longPress = Runnable { begin(item); dragging = true }
+        handle.setOnTouchListener { v, e ->
+            val raw = if (vertical) e.rawY else e.rawX
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    start = raw; startIndex = items().indexOf(item)
+                    if (immediate) { begin(item); dragging = true } else v.postDelayed(longPress, 260)
+                    true
+                }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    if (!dragging) { if (kotlin.math.abs(raw - start) > 12 * list.resources.displayMetrics.density) v.removeCallbacks(longPress); return@setOnTouchListener immediate }
+                    list.parent?.requestDisallowInterceptTouchEvent(true)
+                    var offset = raw - start
+                    val its = items()
+                    var idx = its.indexOf(item)
+                    // Swap with a neighbour once the dragged item passes its middle.
+                    while (true) {
+                        val next = its.getOrNull(idx + 1)
+                        val prev = its.getOrNull(idx - 1)
+                        if (offset > 0 && next != null && offset > size(next) / 2f) {
+                            swap(item, next); offset -= size(next); start += size(next); idx++
+                        } else if (offset < 0 && prev != null && -offset > size(prev) / 2f) {
+                            swap(item, prev); offset += size(prev); start -= size(prev); idx--
+                        } else break
+                    }
+                    if (vertical) item.translationY = offset else item.translationX = offset
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                    v.removeCallbacks(longPress)
+                    if (dragging) {
+                        dragging = false
+                        item.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(160).start()
+                        item.elevation = 0f
+                        val end = items().indexOf(item)
+                        if (end != startIndex && startIndex >= 0) onMoved(startIndex, end)
+                        true
+                    } else {
+                        if (!immediate && e.actionMasked == android.view.MotionEvent.ACTION_UP) v.performClick()
+                        immediate
+                    }
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun items() = (0 until list.childCount).map { list.getChildAt(it) }.filter { !skip(it) }
+    private fun size(v: View) = (if (vertical) v.height else v.width).toFloat() + gap(v)
+    private fun gap(v: View) = (v.layoutParams as? LinearLayout.LayoutParams)?.let { if (vertical) it.topMargin + it.bottomMargin else it.leftMargin + it.rightMargin }?.toFloat() ?: 0f
+
+    private fun begin(item: View) {
+        item.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        item.elevation = 12 * list.resources.displayMetrics.density
+        item.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start()
+    }
+
+    /** Moves [item] to where [other] is, in the parent layout. */
+    private fun swap(item: View, other: View) {
+        val i = list.indexOfChild(other)
+        list.removeView(item)
+        list.addView(item, i)
     }
 }

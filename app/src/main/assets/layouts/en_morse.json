@@ -1,0 +1,64 @@
+{
+ "name": "Morse code",
+ "rows": [
+  [
+   {
+    "type": "morse_dot",
+    "label": "•",
+    "w": 2
+   },
+   {
+    "type": "morse_dash",
+    "label": "—",
+    "w": 2
+   }
+  ],
+  [
+   {
+    "type": "morse_dot",
+    "label": "•",
+    "w": 2
+   },
+   {
+    "type": "morse_dash",
+    "label": "—",
+    "w": 2
+   }
+  ],
+  [
+   {
+    "type": "shift",
+    "w": 1
+   },
+   {
+    "label": ",",
+    "out": ",",
+    "long": ";:"
+   },
+   {
+    "label": ".",
+    "out": ".",
+    "long": "?!"
+   },
+   {
+    "type": "backspace",
+    "w": 1
+   }
+  ],
+  [
+   {
+    "type": "symbols"
+   },
+   {
+    "type": "lang"
+   },
+   {
+    "type": "space",
+    "w": 3
+   },
+   {
+    "type": "enter"
+   }
+  ]
+ ]
+}

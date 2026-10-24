@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="spell_label">MyKey</string>
+    <string name="spell_en">English</string>
+    <string name="spell_es">Español</string>
+    <string name="spell_ru">Русский</string>
+</resources>

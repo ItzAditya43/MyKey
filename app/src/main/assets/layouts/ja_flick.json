@@ -1,0 +1,9 @@
+{
+  "name": "日本語 フリック",
+  "rows": [
+    [{"type":"cursor_left"}, {"label":"あ","flick":"あいうえお","w":1.35}, {"label":"か","flick":"かきくけこ","w":1.35}, {"label":"さ","flick":"さしすせそ","w":1.35}, {"type":"backspace","w":1}],
+    [{"type":"cursor_right"}, {"label":"た","flick":"たちつてと","w":1.35}, {"label":"な","flick":"なにぬねの","w":1.35}, {"label":"は","flick":"はひふへほ","w":1.35}, {"type":"space","label":"空白","w":1}],
+    [{"type":"symbols","w":1}, {"label":"ま","flick":"まみむめも","w":1.35}, {"label":"や","flick":["や","（","ゆ","）","よ"],"w":1.35}, {"label":"ら","flick":"らりるれろ","w":1.35}, {"type":"emoji","w":1}],
+    [{"type":"lang","w":1}, {"type":"kana_mod","w":1.35}, {"label":"わ","flick":"わをんー","w":1.35}, {"label":"、。?!","flick":"、。？！","w":1.35}, {"type":"enter","w":1}]
+  ]
+}

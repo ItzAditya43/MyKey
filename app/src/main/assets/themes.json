@@ -1,0 +1,158 @@
+[
+ {
+  "name": "Graphite",
+  "bg": "#1C1F1E",
+  "key": "#2E3331",
+  "mod": "#232726",
+  "fg": "#EEF2EF",
+  "acc": "#3FD0B0",
+  "accFg": "#06231C"
+ },
+ {
+  "name": "Paper",
+  "bg": "#E9EBE6",
+  "key": "#FFFFFF",
+  "mod": "#CFD4CC",
+  "fg": "#1B2420",
+  "acc": "#0E7C66",
+  "accFg": "#FFFFFF"
+ },
+ {
+  "name": "Midnight",
+  "bg": "#0D1424",
+  "key": "#1A2540",
+  "mod": "#121B30",
+  "fg": "#DFE8FF",
+  "acc": "#6C8DFF",
+  "accFg": "#08102A"
+ },
+ {
+  "name": "Sunset",
+  "bg": "#2A1A1F",
+  "key": "#432A31",
+  "mod": "#332025",
+  "fg": "#FFE9DC",
+  "acc": "#FF8A4C",
+  "accFg": "#2A1208"
+ },
+ {
+  "name": "Sakura",
+  "bg": "#F6E4EA",
+  "key": "#FFF8FA",
+  "mod": "#EBC9D5",
+  "fg": "#3A1424",
+  "acc": "#D0457A",
+  "accFg": "#FFFFFF"
+ },
+ {
+  "name": "Mono",
+  "bg": "#000000",
+  "key": "#161616",
+  "mod": "#0B0B0B",
+  "fg": "#F2F2F2",
+  "acc": "#F2F2F2",
+  "accFg": "#000000"
+ },
+ {
+  "name": "Crimson Noir",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#FFFFFF",
+  "acc": "#FF1F3D",
+  "accFg": "#FFFFFF",
+  "border": "#D0102E",
+  "amoled": true,
+  "modFg": "#FF3B55"
+ },
+ {
+  "name": "Abyss",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#F2F7FF",
+  "acc": "#2F7BFF",
+  "accFg": "#FFFFFF",
+  "border": "#2563EB",
+  "amoled": true,
+  "modFg": "#5C9DFF"
+ },
+ {
+  "name": "Eclipse",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#FFFFFF",
+  "acc": "#FF1F3D",
+  "accFg": "#FFFFFF",
+  "border": "#2E5BFF",
+  "amoled": true,
+  "modFg": "#FF3B55"
+ },
+ {
+  "name": "AMOLED",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#F5F5F5",
+  "acc": "#3FD0B0",
+  "accFg": "#000000",
+  "border": "#262626",
+  "amoled": true
+ },
+ {
+  "name": "AMOLED Neon",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#E8FFF9",
+  "acc": "#00F5C4",
+  "accFg": "#000000",
+  "border": "#00F5C4",
+  "amoled": true
+ },
+ {
+  "name": "AMOLED Ember",
+  "bg": "#000000",
+  "key": "#0A0503",
+  "mod": "#000000",
+  "fg": "#FFE3D3",
+  "acc": "#FF6A2B",
+  "accFg": "#000000",
+  "border": "#3A1A0E",
+  "amoled": true
+ },
+ {
+  "name": "AMOLED Violet",
+  "bg": "#000000",
+  "key": "#05030A",
+  "mod": "#000000",
+  "fg": "#EEE6FF",
+  "acc": "#A27BFF",
+  "accFg": "#0B0420",
+  "border": "#2A1F45",
+  "amoled": true
+ },
+ {
+  "name": "AMOLED Ice",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#DDF3FF",
+  "acc": "#5CC8FF",
+  "accFg": "#00121D",
+  "border": "#12384D",
+  "amoled": true
+ },
+ {
+  "name": "OLED Ghost",
+  "bg": "#000000",
+  "key": "#000000",
+  "mod": "#000000",
+  "fg": "#9AA3A0",
+  "acc": "#000000",
+  "accFg": "#E6ECE9",
+  "border": "#000000",
+  "amoled": true
+ }
+]

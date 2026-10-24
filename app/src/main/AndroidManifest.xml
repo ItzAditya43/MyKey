@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- INTERNET is used solely by online GIF search (off by default, only when you open or search GIFs).
+     VIBRATE is for key vibration. Typing data is never sent anywhere. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Key vibration that works even when the phone's system touch vibration is off. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@drawable/ic_keyboard"
+        android:label="MyKey"
+        android:supportsRtl="true">
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="true"
+            android:theme="@style/Settings"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- No launcher icon. Settings open from system Settings → Keyboards → MyKey,
+             or by long-pressing the 🌐 key. -->
+
+
+        <service
+            android:name=".KeyboardService"
+            android:exported="true"
+            android:label="MyKey"
+            android:permission="android.permission.BIND_INPUT_METHOD">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/method" />
+        </service>
+        <service
+            android:name=".SpellChecker"
+            android:exported="true"
+            android:label="MyKey"
+            android:permission="android.permission.BIND_TEXT_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.textservice.SpellCheckerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.textservice.scs"
+                android:resource="@xml/spellchecker" />
+        </service>
+
+        <provider
+            android:name=".GifProvider"
+            android:authorities="com.mobilekey.gifs"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+    </application>
+</manifest>

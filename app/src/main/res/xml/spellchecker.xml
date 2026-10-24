@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<spell-checker xmlns:android="http://schemas.android.com/apk/res/android"
+    android:label="@string/spell_label"
+    android:settingsActivity="com.mobilekey.SettingsActivity">
+    <subtype android:label="@string/spell_en" android:subtypeLocale="en" />
+    <subtype android:label="@string/spell_es" android:subtypeLocale="es" />
+    <subtype android:label="@string/spell_ru" android:subtypeLocale="ru" />
+</spell-checker>

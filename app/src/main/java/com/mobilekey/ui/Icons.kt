@@ -105,6 +105,14 @@ class IconView(ctx: Context, var icon: String, var color: Int) : View(ctx) {
                 c.drawPath(up, p); c.drawPath(dn, p)
                 c.drawLine(5f, 12f, 19f, 12f, p)
             }
+            "gif" -> {
+                c.drawRoundRect(RectF(2.5f, 6f, 21.5f, 18f), 3f, 3f, p)
+                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = p.color; textSize = 8.2f; textAlign = Paint.Align.CENTER
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                c.drawText("GIF", 12f, 15f, tp)
+            }
             "grid" -> {
                 for (x in listOf(6f, 12f, 18f)) for (y in listOf(6f, 12f, 18f)) fillDot(c, x, y, 1.6f)
             }

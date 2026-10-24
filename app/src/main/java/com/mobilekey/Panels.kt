@@ -100,6 +100,39 @@ fun Panel.bindGifGrid(grid: GridView, local: List<File>, remote: List<GifOnline.
     }
 }
 
+/** GIF panel (its own toolbar button): your saved GIFs first, then online trending when that's on. */
+class GifPanel(
+    ctx: Context, t: KbTheme,
+    onLocal: (File) -> Unit,
+    onRemote: ((GifOnline.Gif) -> Unit)?,
+    onSearch: () -> Unit,
+    onBack: () -> Unit,
+) : Panel(ctx, t) {
+    init {
+        val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
+        head.addView(iconButton("back", "Back to keys", onBack), LayoutParams(px(44f), px(40f)))
+        head.addView(label("GIFs & stickers", 16f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(12f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
+        val online = onRemote != null && GifOnline.enabled(ctx)
+        if (online) head.addView(iconButton("search", "Search GIFs", onSearch), LayoutParams(px(44f), px(40f)))
+        addView(head, LayoutParams(-1, px(48f)))
+        val grid = GridView(ctx).apply { stretchMode = GridView.STRETCH_COLUMN_WIDTH; isVerticalScrollBarEnabled = false; selector = GradientDrawable() }
+        val files = EmojiPanel.gifFiles(ctx)
+        val status = label(when {
+            files.isEmpty() && !online -> "Add your own GIFs and stickers in MyKey settings → Tools, or turn on online GIF search there."
+            online -> "Loading trending…"
+            else -> ""
+        }, 14f).apply { alpha = 0.7f; setPadding(px(16f), px(6f), px(16f), px(6f)) }
+        if (status.text.isNotEmpty()) addView(status, LayoutParams(-1, -2))
+        addView(grid, LayoutParams(-1, 0, 1f))
+        bindGifGrid(grid, files, emptyList(), onLocal, onRemote)
+        if (online) GifOnline.search(ctx, "") { gifs, err ->
+            status.text = err ?: ""
+            status.visibility = if (err == null) View.GONE else View.VISIBLE
+            bindGifGrid(grid, files, gifs, onLocal, onRemote)
+        }
+    }
+}
+
 /** Results of an online GIF search. */
 class GifResultsPanel(
     ctx: Context, t: KbTheme, query: String,

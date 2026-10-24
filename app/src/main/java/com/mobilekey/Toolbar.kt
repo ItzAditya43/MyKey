@@ -7,7 +7,8 @@ object Toolbar {
     class Item(val id: String, val icon: String, val name: String, val feature: String?)
 
     val all = listOf(
-        Item("emoji", "emoji", "Emoji, symbols and GIFs", "emoji"),
+        Item("emoji", "emoji", "Emoji and symbols", "emoji"),
+        Item("gif", "gif", "GIFs and stickers", "gifs"),
         Item("clipboard", "clipboard", "Clipboard history", "clipboard"),
         Item("snippets", "snippet", "Snippets", "snippets"),
         Item("edit", "edit", "Editing panel", "edit_toolbar"),

@@ -489,11 +489,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         val p: View = when (name) {
             "emoji" -> EmojiPanel(this, t, onEmoji = ::insertEmoji, onBack = { showPanel("keys") },
                 onBackspace = { onSpecial("backspace") }, onSearch = ::startEmojiSearch,
-                onGif = if (f("gifs")) ::sendGif else null,
-                onRemoteGif = if (f("gif_search")) ::sendRemoteGif else null,
-                onGifSearch = ::startGifSearch, startOnGifs = panelArg == "gif")
+                onGif = null)
+            "gif" -> GifPanel(this, t, onLocal = ::sendGif, onRemote = if (f("gif_search")) ::sendRemoteGif else null,
+                onSearch = ::startGifSearch, onBack = { showPanel("keys") })
             "gifresults" -> GifResultsPanel(this, t, gifQuery, onRemote = ::sendRemoteGif,
-                onBack = { panelArg = "gif"; showPanel("emoji") }, onSearchAgain = ::startGifSearch)
+                onBack = { showPanel("gif") }, onSearchAgain = ::startGifSearch)
             "lang" -> LangPanel(this, t, lang, onPick = ::switchTo, onRemove = ::removeLang,
                 onSettings = { onSpecial("settings") }, onBack = { showPanel("keys") })
             "snippets" -> SnippetPanel(this, t, onInsert = { commitComposing(); currentInputConnection?.commitText(it, 1) }, onBack = { showPanel("keys") })
@@ -516,7 +516,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     private fun toggleToolbar() {
         if (emojiSearch) {
             emojiSearch = false
-            if (gifSearch) { gifSearch = false; panelArg = "gif" }
+            if (gifSearch) { gifSearch = false; showPanel("gif"); return }
             showPanel("emoji"); return
         }
         if (panel != "keys") { showPanel("keys"); return }
@@ -527,6 +527,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     private fun tool(action: String) {
         when (action) {
             "emoji" -> showPanel(if (panel == "emoji") "keys" else "emoji")
+            "gif" -> showPanel(if (panel == "gif" || panel == "gifresults") "keys" else "gif")
             "clipboard" -> showPanel(if (panel == "clip") "keys" else "clip")
             "edit" -> showPanel(if (panel == "edit") "keys" else "edit")
             "snippets" -> showPanel(if (panel == "snippets") "keys" else "snippets")
@@ -570,7 +571,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         if (f("incognito")) add("incognito")
         if (handMode == "left" || handMode == "right") add("hand")
         if (handMode == "float") add("float")
-        when (panel) { "emoji" -> add("emoji"); "clip" -> add("clipboard"); "edit" -> add("edit") }
+        when (panel) { "emoji" -> add("emoji"); "gif", "gifresults" -> add("gif"); "clip" -> add("clipboard"); "edit" -> add("edit") }
     }
 
     private fun insertEmoji(e: String) {
@@ -779,7 +780,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
                     if (gifSearch) {
                         gifSearch = false
                         gifQuery = emojiQuery.toString().trim()
-                        if (gifQuery.isNotEmpty()) showPanel("gifresults") else { panelArg = "gif"; showPanel("emoji") }
+                        if (gifQuery.isNotEmpty()) showPanel("gifresults") else showPanel("gif")
                     } else showPanel("emoji")
                     return
                 }

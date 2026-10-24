@@ -684,7 +684,7 @@ class KeyboardView(context: Context) : View(context) {
         val dx = lastX - downX
         val dy = lastY - downY
         if (swipeGestures && kr.key.type == "space" && abs(dy) > kr.rect.height() * 0.6f && abs(dx) < abs(dy)) {
-            listener?.onSpecial(if (dy < 0) "lang" else "hide")
+            listener?.onSpecial(if (dy < 0) "next_lang" else "hide")
             return
         }
         if (swipeGestures && kr.key.type == null && swipeUpLikely(dx, dy) && -dy > kr.rect.height() * 0.45f) {
@@ -734,7 +734,7 @@ class KeyboardView(context: Context) : View(context) {
                 } else listener?.onLongSpace()
                 return
             }
-            "lang" -> { listener?.onSpecial("lang_panel"); return }
+            "lang" -> { listener?.onSpecial("settings"); return }
         }
         showOptions(kr)
     }

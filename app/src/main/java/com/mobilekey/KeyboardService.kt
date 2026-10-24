@@ -409,6 +409,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     ) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
         val hadSel = selStart != selEnd
+        // You tapped somewhere in the text while a panel was open: go back to typing.
+        if ((panel != "keys" || emojiSearch) && (newSelStart != oldSelStart || newSelEnd != oldSelEnd) &&
+            SystemClock.uptimeMillis() - lastOwnEdit > 450) main.post { backToKeys() }
         selStart = newSelStart; selEnd = newSelEnd
         if (hadSel != (selStart != selEnd)) main.post { refreshBar() }
         // The cursor moved away from the word being typed (tap elsewhere, app changed the text).
@@ -479,6 +482,25 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     // ---------- panels and toolbar ----------
 
     private var panelArg: String? = null
+    /** Last time MyKey itself changed the text or cursor; cursor moves after this are yours. */
+    private var lastOwnEdit = 0L
+
+    private fun ownEdit() { lastOwnEdit = SystemClock.uptimeMillis() }
+
+    /** Any panel or search open → back to the typing keys. */
+    private fun backToKeys() {
+        if (panel == "keys" && !emojiSearch) return
+        emojiSearch = false
+        gifSearch = false
+        showPanel("keys")
+    }
+
+    @Deprecated("Still sent by most apps when the focused text box is tapped")
+    override fun onViewClicked(focusChanged: Boolean) {
+        @Suppress("DEPRECATION")
+        super.onViewClicked(focusChanged)
+        backToKeys()
+    }
     private var emojiPanel: EmojiPanel? = null
     private var cachedPanelHeight = 0
 
@@ -508,11 +530,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
                 onBack = { showPanel("gif") }, onSearchAgain = ::startGifSearch)
             "lang" -> LangPanel(this, t, lang, onPick = ::switchTo, onRemove = ::removeLang,
                 onSettings = { onSpecial("settings") }, onBack = { showPanel("keys") })
-            "snippets" -> SnippetPanel(this, t, onInsert = { commitComposing(); currentInputConnection?.commitText(it, 1) }, onBack = { showPanel("keys") })
+            "snippets" -> SnippetPanel(this, t, onInsert = { ownEdit(); commitComposing(); currentInputConnection?.commitText(it, 1) }, onBack = { showPanel("keys") })
             "clip" -> {
                 if (f("clip_autoclear")) user.clearClips(3_600_000)
                 ClipPanel(this, t, user, f("clipboard"), onPaste = {
-                    commitComposing(); currentInputConnection?.commitText(it, 1); stats.add("pastes")
+                    ownEdit(); commitComposing(); currentInputConnection?.commitText(it, 1); stats.add("pastes")
                 }, onBack = { showPanel("keys") })
             }
             "edit" -> EditPanel(this, t, onAction = ::editAction, onBack = { showPanel("keys") })
@@ -548,6 +570,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             "resize" -> toggleResize()
             "undo" -> currentInputConnection?.performContextMenuAction(android.R.id.undo)
             "redo" -> currentInputConnection?.performContextMenuAction(android.R.id.redo)
+            "lang" -> showPanel(if (panel == "lang") "keys" else "lang")
             "hand" -> setHand(if (handMode == "left" || handMode == "right") "full" else prefs.getString("last_hand", "right") ?: "right")
             "float" -> setHand(if (handMode == "float") "full" else "float")
             "incognito" -> {
@@ -583,10 +606,11 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         if (f("incognito")) add("incognito")
         if (handMode == "left" || handMode == "right") add("hand")
         if (handMode == "float") add("float")
-        when (panel) { "emoji" -> add("emoji"); "gif", "gifresults" -> add("gif"); "clip" -> add("clipboard"); "edit" -> add("edit") }
+        when (panel) { "emoji" -> add("emoji"); "gif", "gifresults" -> add("gif"); "clip" -> add("clipboard"); "edit" -> add("edit"); "lang" -> add("lang"); "snippets" -> add("snippets") }
     }
 
     private fun insertEmoji(e: String) {
+        ownEdit()
         commitComposing()
         currentInputConnection?.commitText(e, 1)
         EmojiPanel.addRecent(this, e)
@@ -610,6 +634,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun editAction(a: String) {
         val ic = currentInputConnection ?: return
+        ownEdit()
         commitComposing()
         fun key(code: Int, shiftOn: Boolean) {
             val meta = if (shiftOn) KeyEvent.META_SHIFT_ON or KeyEvent.META_SHIFT_LEFT_ON else 0
@@ -665,6 +690,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onText(text: String) {
         val ic = currentInputConnection ?: return
+        ownEdit()
         stats.keyPress()
         lastCorrection = null
         if (emojiSearch) {
@@ -782,6 +808,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
 
     override fun onSpecial(type: String) {
         val ic = currentInputConnection ?: return
+        ownEdit()
         if (type != "settings") stats.keyPress()
         if (emojiSearch) {
             when (type) {
@@ -909,7 +936,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
                 updateShift()
                 refreshBar()
             }
-            "lang" -> nextLanguage()
+            // Globe key: tap opens emoji (tap again for the keys); long-press opens settings.
+            "lang" -> showPanel(if (panel == "emoji") "keys" else "emoji")
+            "next_lang" -> nextLanguage()
             "kana_mod" -> {
                 if (reading.isNotEmpty()) {
                     Kana.cycle(reading.last())?.let { reading.setCharAt(reading.length - 1, it) }
@@ -1034,6 +1063,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
 
     /** From the language panel: turn the language on if needed and switch to it. */
     private fun switchTo(l: String) {
+        ownEdit()
         val list = Langs.enabled(prefs).toMutableList()
         if (l !in list) list.add(l)
         prefs.edit().putString("langs", list.joinToString(",")).putString("lang", l).apply()
@@ -1227,6 +1257,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
 
     private fun sendGif(f: java.io.File) {
         val ic = currentInputConnection ?: return
+        ownEdit()
         val type = GifProvider.typeOf(f.name)
         val accepted = info?.contentMimeTypes?.any { android.content.ClipDescription.compareMimeTypes(type, it) } == true
         if (!accepted) {

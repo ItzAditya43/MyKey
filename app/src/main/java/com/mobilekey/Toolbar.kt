@@ -17,6 +17,7 @@ object Toolbar {
         Item("redo", "redo", "Redo", "undo_redo"),
         Item("theme", "theme", "Switch theme", "tool_theme"),
         Item("resize", "resize", "Resize keyboard", "tool_resize"),
+        Item("lang", "globe", "Languages", null),
         Item("hand", "hand", "One-handed mode", null),
         Item("float", "float", "Floating keyboard", null),
         Item("incognito", "incognito", "Incognito", null),
@@ -29,7 +30,8 @@ object Toolbar {
         return saved + all.filter { it !in saved }
     }
 
-    fun hidden(p: SharedPreferences): Set<String> = (p.getString("toolbar_hidden", "") ?: "").split(',').filter { it.isNotEmpty() }.toSet()
+    /** Settings is off the toolbar by default: long-press the globe key instead. */
+    fun hidden(p: SharedPreferences): Set<String> = (p.getString("toolbar_hidden", null) ?: "settings").split(',').filter { it.isNotEmpty() }.toSet()
 
     /** Buttons that actually show: in your order, not hidden, and their feature switched on. */
     fun visible(p: SharedPreferences): List<Item> {

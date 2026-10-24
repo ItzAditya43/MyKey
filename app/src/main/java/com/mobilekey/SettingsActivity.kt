@@ -307,7 +307,7 @@ class SettingsActivity : Activity() {
         }
         groupsBox.addView(k.eyebrow("Try it"))
         groupsBox.addView(k.field("Type here to test MyKey…"), k.lp())
-        groupsBox.addView(k.text("Open settings from the gear in the keyboard's toolbar, or long-press the globe key.", 13f, p.muted).apply {
+        groupsBox.addView(k.text("Long-press the globe key on the keyboard to open these settings. Tap it for emoji.", 13f, p.muted).apply {
             gravity = Gravity.CENTER; setPadding(k.dp(24), k.dp(22), k.dp(24), 0)
         })
 
@@ -781,7 +781,7 @@ class SettingsActivity : Activity() {
             "en" to "English", "es" to "Spanish · ñ key and accents", "ru" to "Russian · ЙЦУКЕН",
             "ja" to "Japanese · flick or romaji, kana to kanji", "zh" to "Mandarin · pinyin to characters",
         )
-        return page("Languages", "Switch with the globe key, or swipe up on space.", pv.box) {
+        return page("Languages", "Switch: swipe up on the space bar, or Languages in the toolbar.", pv.box) {
             section("Your languages") {
                 Langs.supported.forEach { l ->
                     divided(k.toggleRow(Langs.names[l] ?: l, sub[l] ?: "", l in Langs.enabled(prefs)) { on ->

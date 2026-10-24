@@ -142,6 +142,7 @@ class SettingsActivity : Activity() {
         "correction" -> featurePage("Autocorrect", "Fixes, capitals and punctuation.", "Correction")
         "tools" -> tools()
         "toolbar" -> toolbarPage()
+        "longpress" -> longPressPage()
         "learning" -> learning()
         "shortcuts" -> shortcuts()
         "layouts" -> layouts()
@@ -240,6 +241,7 @@ class SettingsActivity : Activity() {
             Tile("✦", "Learning", if (f("incognito")) "Incognito is on" else "$learned words learned", "learning"),
             Tile("↦", "Shortcuts", "${user.allShortcuts().size} shortcuts", "shortcuts"),
             Tile("{ }", "Layouts", "Edit keys as JSON", "layouts"),
+            Tile("⇡", "Hold keys", "Choose what each key gives on long-press", "longpress"),
             Tile("▲", "Stats", "${st.get("words")} words · ${st.wpm()} wpm", "stats"),
             Tile("⇅", "Backup", "Export or restore everything", "backup"),
         )
@@ -341,12 +343,15 @@ class SettingsActivity : Activity() {
         private var symbols = false
         var custom: KbLayout? = null
         var themeOverride: KbTheme? = null
+        /** Called with what a key types when tapped (used by the long-press editor). */
+        var onKeyTap: ((String) -> Unit)? = null
 
         init {
             box.addView(line)
             box.addView(kv)
             kv.listener = object : KeyboardView.Listener {
                 override fun onText(text: String) {
+                    onKeyTap?.let { it(text); return }
                     typed.append(text)
                     if (kv.shiftState == 1) kv.shiftState = 0
                     show()
@@ -792,6 +797,96 @@ class SettingsActivity : Activity() {
             }, k.lp(top = 18))
         }
     }
+
+    private fun longPressPage(): View {
+        val pv = Preview(previewLang())
+        val layouts = listOf(Langs.layoutFor("en", prefs) to "English", "es" to "Español", "ru" to "Русский", "symbols" to "Symbols")
+        var layout = Langs.layoutFor("en", prefs)
+        var key: String? = null
+        val title = k.text("Tap a key above to edit it", 17f, p.fg, 700, display = true)
+        val editor = k.column()
+
+        fun loadPreview() {
+            pv.custom = Layouts.load(this, layout, f("custom_layouts"))
+            pv.refresh()
+        }
+        fun currentKey(): Key? = key?.let { kk -> Layouts.load(this, layout, f("custom_layouts")).rows.flatten().firstOrNull { it.type == null && it.out == kk } }
+
+        lateinit var renderEditor: () -> Unit
+        renderEditor = {
+            editor.removeAllViews()
+            val kk = key
+            val cur = currentKey()
+            if (kk == null || cur == null) {
+                title.text = "Tap a key above to edit it"
+            } else {
+                title.text = "Key  “$kk”" + if (LongPress.has(prefs, layout, kk)) "  · edited" else ""
+                val opts = cur.long.toMutableList()
+                fun save(hint: String? = cur.hint) { LongPress.set(prefs, layout, kk, opts, hint); loadPreview(); renderEditor() }
+
+                editor.addView(k.eyebrow("Long-press options · tap one to move or remove it"))
+                val chips = ArrayList<View>()
+                var picked = -1
+                val actions = k.row()
+                opts.forEachIndexed { i, o ->
+                    chips.add(k.chip(o, false) {
+                        picked = i
+                        chips.forEachIndexed { j, c -> (c as TextView).apply {
+                            setTextColor(if (j == i) p.accentFg else p.fg); background = k.ripple(if (j == i) p.accent else p.surface2, 99f) } }
+                        actions.visibility = View.VISIBLE
+                    })
+                }
+                if (opts.isEmpty()) editor.addView(k.text("No long-press options. Add some below.", 14f, p.muted))
+                else editor.addView(k.chipRow(chips))
+                actions.visibility = View.GONE
+                fun act(label: String, kind: String, f: () -> Unit) = k.button(label, kind) { f() }
+                actions.addView(act("←", "secondary") { if (picked > 0) { opts.add(picked - 1, opts.removeAt(picked)); save() } }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(6) })
+                actions.addView(act("→", "secondary") { if (picked in 0 until opts.size - 1) { opts.add(picked + 1, opts.removeAt(picked)); save() } }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(6) })
+                actions.addView(act("Remove", "danger") { if (picked >= 0) { opts.removeAt(picked); save() } }, LinearLayout.LayoutParams(0, -2, 2f))
+                editor.addView(actions, k.lp(top = 10))
+
+                editor.addView(k.eyebrow("Add options"))
+                val add = k.row()
+                val field = k.field("Type characters, e.g. ¿¡ or a word")
+                add.addView(field, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = k.dp(8) })
+                add.addView(k.button("Add") {
+                    val t = field.text.toString().trim()
+                    if (t.isNotEmpty()) {
+                        // Several single characters become separate options; a word stays one option.
+                        val parts = if (t.contains(' ')) t.split(' ').filter { it.isNotEmpty() }
+                            else if (t.codePointCount(0, t.length) <= 6) t.codePoints().toArray().map { String(Character.toChars(it)) } else listOf(t)
+                        opts.addAll(parts.filter { it !in opts }); save()
+                    }
+                })
+                editor.addView(add)
+                editor.addView(k.text("Tip: separate words with spaces to add several at once.", 12.5f, p.muted), k.lp(top = 4))
+
+                val hintOpts = listOf("\u0000" to "First option", "" to "No hint") + opts.map { it to it }
+                val curHint = when (cur.hint) { null -> "\u0000"; else -> cur.hint }
+                editor.addView(k.eyebrow("Small hint on the key"))
+                val hintChips = ArrayList<TextView>()
+                hintOpts.forEach { (id, label) ->
+                    hintChips.add(k.chip(label, id == curHint) { save(if (id == "\u0000") null else id) })
+                }
+                editor.addView(k.chipRow(hintChips))
+
+                editor.addView(k.button("Reset this key", "secondary") { LongPress.reset(prefs, layout, kk); loadPreview(); renderEditor() }, k.lp(top = 16))
+            }
+        }
+
+        pv.onKeyTap = { t -> key = t.lowercase().takeIf { s2 -> currentKeyExists(layout, s2) } ?: t; renderEditor() }
+        loadPreview()
+        return page("Hold keys", "Tap a key on the keyboard to edit its long-press.", pv.box) {
+            choice("Layout", layouts, layout) { layout = it; key = null; loadPreview(); renderEditor() }
+            addView(title, k.lp(top = 16, bottom = 4))
+            addView(editor, k.lp())
+            renderEditor()
+            addView(k.button("Reset all keys in this layout", "danger") { LongPress.reset(prefs, layout, null); key = null; loadPreview(); renderEditor() }, k.lp(top = 22))
+        }
+    }
+
+    private fun currentKeyExists(layout: String, out: String) =
+        Layouts.load(this, layout, f("custom_layouts")).rows.flatten().any { it.type == null && it.out == out }
 
     private fun toolbarPage(): View {
         val theme = Themes.byName(this, KbConfig.themeName(this, prefs))

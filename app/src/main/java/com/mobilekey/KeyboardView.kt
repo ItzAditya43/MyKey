@@ -351,7 +351,7 @@ class KeyboardView(context: Context) : View(context) {
                 hint.textSize = spPx(labelSp) * 0.38f
                 c.drawText(k.flick.drop(1).joinToString(""), rect.centerX(), rect.bottom - 5 * dp, hint)
                 hint.textAlign = Paint.Align.RIGHT
-            } else if (showHints && k.type == null && (k.long.isNotEmpty() || k.hint != null)) {
+            } else if (showHints && k.type == null && (k.long.isNotEmpty() || !k.hint.isNullOrEmpty()) && k.hint != "") {
                 val h = k.hint ?: k.long[0]
                 if (h.codePointCount(0, h.length) <= 2) {
                     hint.color = if (t.modFg != t.fg) t.modFg else t.fg

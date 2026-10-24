@@ -97,12 +97,14 @@ object Layouts {
         return if (allowOverride && f.exists()) f.readText() else assetText(ctx, name)
     }
 
-    fun load(ctx: Context, name: String, allowOverride: Boolean): KbLayout =
-        try {
+    fun load(ctx: Context, name: String, allowOverride: Boolean): KbLayout {
+        val l = try {
             parse(text(ctx, name, allowOverride))
         } catch (e: Exception) {
             parse(assetText(ctx, name))
         }
+        return LongPress.apply(Prefs.get(ctx), name, l)
+    }
 
     fun save(ctx: Context, name: String, json: String) {
         parse(json)

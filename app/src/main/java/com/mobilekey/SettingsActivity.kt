@@ -486,22 +486,40 @@ class SettingsActivity : Activity() {
             addView(k.chipRow(items))
             addView(k.button("Create your own theme", "secondary") { open("theme_editor") }, k.lp(top = 12))
 
-            // Favourites for the toolbar's theme button (multi-select).
-            addView(k.eyebrow("Favourites for the theme button"))
-            val favs = (prefs.getString("fav_themes", null) ?: listOf(current, "Crimson Noir", "Abyss").joinToString(","))
+            // The toolbar's theme button and which themes it switches between.
+            section("Theme button in the toolbar") {
+                toggles("tool_theme") { reload() }
+                divided(k.text("Tapping that button switches between the themes ticked below. Ticking a theme here doesn't change your current theme; tap a theme card above for that.", 13.5f, p.muted).apply {
+                    setPadding(0, k.dp(10), 0, k.dp(12))
+                })
+            }
+            val favs = (prefs.getString("fav_themes", null) ?: listOf(current, "Crimson Noir", "Abyss").distinct().joinToString(","))
                 .split(',').filter { it.isNotEmpty() }.toMutableList()
             val favChips = ArrayList<TextView>()
+            fun styleChip(c: TextView, name: String) {
+                val on = name in favs
+                c.text = if (on) "✓  $name" else name
+                c.setTextColor(if (on) p.accentFg else p.fg)
+                c.background = k.ripple(if (on) p.accent else p.surface2, 99f)
+            }
             Themes.all(this@SettingsActivity).forEach { th ->
                 lateinit var chip: TextView
-                chip = k.chip(th.name, th.name in favs) {
-                    if (th.name in favs) { if (favs.size > 1) favs.remove(th.name) } else favs.add(th.name)
+                chip = k.chip(th.name, false) {
+                    val adding = th.name !in favs
+                    if (!adding && favs.size <= 1) {
+                        android.widget.Toast.makeText(this@SettingsActivity, "Keep at least one theme for the button.", android.widget.Toast.LENGTH_SHORT).show()
+                        return@chip
+                    }
+                    if (adding) favs.add(th.name) else favs.remove(th.name)
                     prefs.edit().putString("fav_themes", favs.joinToString(",")).apply()
-                    favChips.forEach { c -> val on = c.text.toString() in favs
-                        c.setTextColor(if (on) p.accentFg else p.fg); c.background = k.ripple(if (on) p.accent else p.surface2, 99f) }
+                    styleChip(chip, th.name)
+                    android.widget.Toast.makeText(this@SettingsActivity,
+                        if (adding) "Added ${th.name} to the theme button" else "Removed ${th.name} from the theme button", android.widget.Toast.LENGTH_SHORT).show()
                 }
+                styleChip(chip, th.name)
                 favChips.add(chip)
             }
-            addView(k.chipRow(favChips))
+            addView(k.chipRow(favChips).apply { alpha = if (f("tool_theme")) 1f else 0.45f }, k.lp(top = 10))
 
             section("Keyboard size") {
                 divided(k.slider("Overall size", "%", 70, 140, prefs.getInt("scale", KbConfig.DEF_SCALE)) { save("scale", it); pv.refresh() })

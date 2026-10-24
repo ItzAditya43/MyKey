@@ -158,6 +158,15 @@ class ThemeSwatch(ctx: Context, val theme: KbTheme, private val p: Palette) : Vi
             paint.strokeWidth = 2.5f * d
             paint.color = p.accent
             c.drawRoundRect(RectF(1.5f * d, 1.5f * d, w - 1.5f * d, h - 1.5f * d), 16 * d, 16 * d, paint)
+            // Check badge in the corner of the selected theme.
+            paint.style = Paint.Style.FILL
+            c.drawCircle(w - 13 * d, 13 * d, 9 * d, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 2 * d
+            paint.color = p.accentFg
+            paint.strokeCap = Paint.Cap.ROUND
+            c.drawLine(w - 17 * d, 13 * d, w - 14 * d, 16 * d, paint)
+            c.drawLine(w - 14 * d, 16 * d, w - 9 * d, 10 * d, paint)
             paint.style = Paint.Style.FILL
         }
     }

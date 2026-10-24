@@ -129,7 +129,9 @@ class SettingsActivity : Activity() {
         }
     }
 
+    /** Android 11–12 only; Android 13+ uses the OnBackInvokedCallback registered in [updateBack]. */
     @Deprecated("Used below Android 13")
+    @android.annotation.SuppressLint("GestureBackNavigation")
     override fun onBackPressed() {
         if (stack.size > 1) back() else super.onBackPressed()
     }

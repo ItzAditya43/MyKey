@@ -279,8 +279,9 @@ class KeyboardView(context: Context) : View(context) {
             }
             if (pressAnim == "ripple" && p in 0f..1f) {
                 c.save()
-                val clip = Path().apply { addRoundRect(rect, r, r, Path.Direction.CW) }
-                c.clipPath(clip)
+                ripplePath.reset()
+                ripplePath.addRoundRect(rect, r, r, Path.Direction.CW)
+                c.clipPath(ripplePath)
                 fill.color = t.fg
                 fill.alpha = (70 * (1 - p)).toInt()
                 val o = animOrigin[kr] ?: PointF(rect.centerX(), rect.centerY())
@@ -475,6 +476,7 @@ class KeyboardView(context: Context) : View(context) {
     private val glidePath = ArrayList<PointF>()
     private class TrailPoint(val x: Float, val y: Float, val t: Long)
     private val tmpRect = RectF()
+    private val ripplePath = Path()
     private var repeatDelay = 0L
     private var repeatCount = 0
     private val handler = Handler(Looper.getMainLooper())

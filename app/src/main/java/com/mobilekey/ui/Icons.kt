@@ -19,6 +19,9 @@ class IconView(ctx: Context, var icon: String, var color: Int) : View(ctx) {
     }
     var active = false
         set(v) { field = v; invalidate() }
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 8.2f; textAlign = Paint.Align.CENTER; typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
 
     override fun onDraw(c: Canvas) {
         val s = min(width, height) * 0.62f
@@ -107,11 +110,8 @@ class IconView(ctx: Context, var icon: String, var color: Int) : View(ctx) {
             }
             "gif" -> {
                 c.drawRoundRect(RectF(2.5f, 6f, 21.5f, 18f), 3f, 3f, p)
-                val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = p.color; textSize = 8.2f; textAlign = Paint.Align.CENTER
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                }
-                c.drawText("GIF", 12f, 15f, tp)
+                textPaint.color = p.color
+                c.drawText("GIF", 12f, 15f, textPaint)
             }
             "globe" -> {
                 c.drawCircle(12f, 12f, 9f, p); c.drawOval(8f, 3f, 16f, 21f, p); c.drawLine(3f, 12f, 21f, 12f, p)

@@ -1,16 +1,32 @@
 # MyKey
 
-A private Android keyboard. It asks Android for **no permissions at all**: no internet, no microphone,
-so what it learns can never leave the phone, and it has no app icon. Settings open from the keyboard
+A private Android keyboard. It never sends what you type anywhere, it has no app icon, and its only
+permissions are vibration and internet for the optional online GIF search (off by default). Settings open from the keyboard
 (long-press the globe key) or from system Settings → Keyboards → MyKey.
 
-## Build and install
+## Install (no computer needed)
+
+Needs Android 11 or newer.
+
+1. On your phone, open the [latest release](https://github.com/ItzAditya43/MyKey/releases/latest) and download **MyKey-vX.Y.Z.apk**.
+2. Open the downloaded file. If Android asks, allow your browser or Files app to install apps.
+   Play Protect may say it doesn't recognise the app; that's normal for apps not from the Play Store.
+3. MyKey has no app icon. Turn it on in **Settings → System (or Additional settings) → Languages & input →
+   On-screen keyboard (or Manage keyboards) → MyKey**. Android shows the same warning for every keyboard.
+4. Open any text box, tap the keyboard switcher (bottom corner of the screen) and choose **MyKey**.
+5. Open MyKey's settings from the gear in its toolbar, or long-press the globe key.
+
+## Build from source
 
 ```fish
-set -x JAVA_HOME ~/.local/jdk/jdk-21.0.13+9
+set -x JAVA_HOME ~/.local/jdk/jdk-21.0.13+9   # JDK 17–21
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Tests: `./gradlew testDebugUnitTest` (logic) and the on-device suite in `app/src/androidTest`
+(install the test APK and run it with `adb shell am instrument`; the default `connectedAndroidTest`
+task uninstalls the app afterwards, which removes your keyboard and its data).
 
 ## Features
 

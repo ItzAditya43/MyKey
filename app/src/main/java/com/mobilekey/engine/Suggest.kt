@@ -19,7 +19,7 @@ object Suggest {
             "wont" to "won't", "didnt" to "didn't", "doesnt" to "doesn't", "isnt" to "isn't",
             "wasnt" to "wasn't", "couldnt" to "couldn't", "shouldnt" to "shouldn't",
             "wouldnt" to "wouldn't", "thats" to "that's", "whats" to "what's", "youre" to "you're",
-            "theyre" to "they're", "teh" to "the", "adn" to "and", "recieve" to "receive",
+            "theyre" to "they're", "teh" to "the", "adn" to "and", "recieve" to "receive", "alot" to "a lot",
         ),
         "es" to mapOf("q" to "que", "xq" to "porque", "tb" to "también"),
     )
@@ -34,9 +34,15 @@ object Suggest {
         aggressive: Boolean,
     ): Suggestions {
         val lower = typed.lowercase()
-        val known = dicts.any { it.contains(lower) } || user.knows(lang, lower)
+        val dictScore = dicts.maxOfOrNull { it.score(lower) ?: -1f } ?: -1f
+        val userKnown = user.knows(lang, lower)
+        val known = dictScore >= 0f || userKnown
+        // The word lists come from subtitles, so they contain rare misspellings ("helo", "untill").
+        // A rare listed word with a far more common neighbour one letter away is treated as a typo.
+        val weak = dictScore >= 0f && !userKnown && lower.length >= 4 && dictScore < RARE
         val scores = HashMap<String, Float>()
         val corrections = HashSet<String>()
+        val closeCommon = HashSet<String>()
 
         fun add(w: String, s: Float, isCorrection: Boolean) {
             if (user.isBlocked(w)) return
@@ -51,16 +57,36 @@ object Suggest {
         dicts.forEachIndexed { di, d ->
             val penalty = if (di == 0) 0f else 1.5f
             d.completions(lower, 4).forEach { (w, s) -> add(w, s - 1.5f - penalty, false) }
-            d.unaccented(lower)?.let { add(it, (d.score(it) ?: 0f) + 3f - penalty, true) }
+            d.unaccented(lower)?.let {
+                val ws = d.score(it) ?: 0f
+                add(it, ws + 3f - penalty, true)
+                // "manana" is in the list as a rare misspelling of "mañana": fix it like other rare typos.
+                val accentFix = dictScore >= 0f && !userKnown && dictScore < 8.5f && ws - dictScore >= 4.6f
+                if ((weak && ws - dictScore >= MUCH_MORE_COMMON) || accentFix) closeCommon.add(it)
+            }
             if (!known && lower.length >= 2) {
                 d.corrections(lower, if (aggressive) 2f else 1.4f, near).forEach { (w, dist) ->
                     if (w != lower) add(w, (d.score(w) ?: 0f) - dist * 4f - penalty, true)
+                }
+            } else if (weak) {
+                d.corrections(lower, 1f, near).forEach { (w, dist) ->
+                    val ws = d.score(w) ?: 0f
+                    if (w != lower && ws - dictScore >= MUCH_MORE_COMMON) {
+                        add(w, ws - dist * 4f - penalty, true)
+                        closeCommon.add(w)
+                    }
                 }
             }
         }
 
         val ranked = scores.entries.sortedByDescending { it.value }.map { it.key }
-        val auto = if (autocorrect && !known) ranked.firstOrNull { it in corrections } else null
+        val auto = when {
+            !autocorrect -> null
+            FIX[lang]?.containsKey(lower) == true && !userKnown -> FIX[lang]?.get(lower)
+            !known -> ranked.firstOrNull { it in corrections }
+            closeCommon.isNotEmpty() -> ranked.firstOrNull { it in closeCommon }
+            else -> null
+        }
         val main = auto ?: typed
         val rest = ranked.filter { !it.equals(main, true) && !it.equals(typed, true) }
         val list = buildList {
@@ -70,6 +96,11 @@ object Suggest {
         }.distinctBy { it.lowercase() }.take(3).map { matchCase(typed, it) }
         return Suggestions(list, auto?.let { matchCase(typed, it) })
     }
+
+    /** ln(count) below this means "rare in the word list" (about 1,000 uses). */
+    private const val RARE = 6.9f
+    /** ln of 300: a neighbour this much more common makes a rare word look like a typo. */
+    private const val MUCH_MORE_COMMON = 5.7f
 
     fun matchCase(typed: String, w: String): String = when {
         typed.length > 1 && typed.all { !it.isLetter() || it.isUpperCase() } -> w.uppercase()

@@ -166,6 +166,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         user = UserModel.get(this)
         stats = Stats.get(this)
         (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).addPrimaryClipChangedListener(clipListener)
+        loader.execute { try { EmojiPanel.preload(this) } catch (_: Throwable) {} }
     }
 
     override fun onDestroy() {
@@ -478,6 +479,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     // ---------- panels and toolbar ----------
 
     private var panelArg: String? = null
+    private var emojiPanel: EmojiPanel? = null
+    private var cachedPanelHeight = 0
 
     private fun showPanel(name: String) {
         val c = content ?: return
@@ -487,9 +490,18 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         val t = theme ?: return
         val h = view.desiredHeight()
         val p: View = when (name) {
-            "emoji" -> EmojiPanel(this, t, onEmoji = ::insertEmoji, onBack = { showPanel("keys") },
-                onBackspace = { onSpecial("backspace") }, onSearch = ::startEmojiSearch,
-                onGif = null)
+            "emoji" -> {
+                // Reuse the panel when nothing changed, so it opens instantly.
+                val cached = emojiPanel
+                val wantKey = "${t.name}|${EmojiPanel.recents(this).isNotEmpty()}"
+                if (cached != null && cached.key == wantKey && cachedPanelHeight == h) {
+                    (cached.parent as? ViewGroup)?.removeView(cached)
+                    cached.reopen()
+                    cached
+                } else EmojiPanel(this, t, onEmoji = ::insertEmoji, onBack = { showPanel("keys") },
+                    onBackspace = { onSpecial("backspace") }, onSearch = ::startEmojiSearch, onGif = null)
+                    .also { emojiPanel = it; cachedPanelHeight = h }
+            }
             "gif" -> GifPanel(this, t, onLocal = ::sendGif, onRemote = if (f("gif_search")) ::sendRemoteGif else null,
                 onSearch = ::startGifSearch, onBack = { showPanel("keys") })
             "gifresults" -> GifResultsPanel(this, t, gifQuery, onRemote = ::sendRemoteGif,

@@ -166,139 +166,116 @@ class EmojiPanel(
     private val onBack: () -> Unit,
     private val onBackspace: () -> Unit,
     private val onSearch: () -> Unit,
-    private val onGif: ((File) -> Unit)?,
-    private val onRemoteGif: ((GifOnline.Gif) -> Unit)? = null,
-    private val onGifSearch: (() -> Unit)? = null,
-    private val startOnGifs: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") onGif: ((File) -> Unit)?,
+    @Suppress("UNUSED_PARAMETER") onRemoteGif: ((GifOnline.Gif) -> Unit)? = null,
+    @Suppress("UNUSED_PARAMETER") onGifSearch: (() -> Unit)? = null,
+    @Suppress("UNUSED_PARAMETER") startOnGifs: Boolean = false,
 ) : Panel(ctx, t) {
-    private var onGifTab = false
 
-    private val grid = GridView(ctx)
-    private val tabs = LinearLayout(ctx).apply { orientation = HORIZONTAL }
+    private val grid: EmojiGrid
+    private val tabRow = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    private val tabScroll = HorizontalScrollView(ctx).apply { isHorizontalScrollBarEnabled = false }
+    private val tabViews = ArrayList<TextView>()
     private val toneWin = PopupWindow(ctx).apply { isOutsideTouchable = true; setBackgroundDrawable(null) }
-
-    private class Tab(val name: String, val icon: String, val items: () -> List<String>, val kind: String = "emoji")
+    private var currentTab = -1
+    private val hasRecents: Boolean
+    val key: String
 
     init {
-        val data = data(ctx)
-        val list = ArrayList<Tab>()
-        list.add(Tab("Recent", "🕘", { recents(ctx) }))
-        data.keys.forEach { g -> list.add(Tab(g, data[g]?.firstOrNull()?.first ?: "?", { data[g]!!.map { it.first } })) }
-        list.add(Tab("Kaomoji", "ツ", { KAOMOJI }, "wide"))
-        symbols(ctx).forEach { (name, chars) -> list.add(Tab(name, SYMBOL_ICONS[name] ?: chars.first(), { chars }, "symbol")) }
-        if (onGif != null) list.add(Tab("GIF", "GIF", { emptyList() }, "gif"))
-        list.forEachIndexed { i, tab ->
-            tabs.addView(label(tab.icon, if (tab.icon.length > 2) 13f else 19f, tab.icon.length > 2).apply {
-                setPadding(px(10f), 0, px(10f), 0)
-                contentDescription = tab.name
-                setOnClickListener { select(i, list) }
-            }, LayoutParams(-2, -1))
+        val sections = ArrayList<EmojiGrid.Section>()
+        val icons = ArrayList<String>()
+        val recent = recents(ctx)
+        hasRecents = recent.isNotEmpty()
+        key = "${t.name}|$hasRecents"
+        if (hasRecents) { sections.add(EmojiGrid.Section("Recently used", recent.toMutableList(), 8)); icons.add("🕘") }
+        data(ctx).forEach { (g, list) ->
+            sections.add(EmojiGrid.Section(g.replace(" & ", " and "), list.map { preferredTone(ctx, it.first) }.toMutableList(), 8))
+            icons.add(list.first().first)
         }
-        addView(HorizontalScrollView(ctx).apply {
-            isHorizontalScrollBarEnabled = false
-            addView(tabs)
-        }, LayoutParams(-1, px(40f)))
-        grid.stretchMode = GridView.STRETCH_COLUMN_WIDTH
-        grid.isVerticalScrollBarEnabled = false
-        grid.selector = GradientDrawable()
+        symbols(ctx).forEach { (name, chars) -> sections.add(EmojiGrid.Section("Symbols · $name", chars, 9)); icons.add(SYMBOL_ICONS[name] ?: chars.first()) }
+        sections.add(EmojiGrid.Section("Kaomoji", KAOMOJI, 3, wide = true)); icons.add("ツ")
+
+        grid = EmojiGrid(ctx, t, sections,
+            onTap = { e, sec -> if (!sec.title.startsWith("Symbols")) addRecent(context, e); onEmoji(e) },
+            onLong = { e, anchor -> baseOf(context, e)?.let { showTones(anchor, it) } },
+            onSection = { i -> selectTab(i, scroll = true) },
+        )
+
+        icons.forEachIndexed { i, icon ->
+            val tv = label(icon, if (icon.length > 2) 13f else 20f, icon.length > 2).apply {
+                contentDescription = sections[i].title
+                setPadding(px(11f), 0, px(11f), 0)
+                setOnClickListener { grid.scrollToSection(i) }
+            }
+            tabViews.add(tv)
+            tabRow.addView(tv, LayoutParams(-2, -1))
+        }
+        tabScroll.addView(tabRow, LayoutParams(-2, -1))
+        addView(tabScroll, LayoutParams(-1, px(42f)))
         addView(grid, LayoutParams(-1, 0, 1f))
-        val bottom = LinearLayout(ctx).apply { orientation = HORIZONTAL; setPadding(px(4f), px(4f), px(4f), px(4f)) }
-        bottom.addView(textButton("ABC", onBack), LayoutParams(px(64f), -1).apply { rightMargin = px(6f) })
-        bottom.addView(iconButton("search", "Search", { if (onGifTab && onGifSearch != null && GifOnline.enabled(context)) onGifSearch.invoke() else onSearch() }), LayoutParams(px(52f), -1).apply { rightMargin = px(6f) })
+
+        val bottom = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(6f)) }
+        bottom.addView(textButton("ABC", onBack), LayoutParams(px(68f), -1).apply { rightMargin = px(6f) })
+        bottom.addView(iconButton("search", "Search emoji", onSearch), LayoutParams(px(52f), -1).apply { rightMargin = px(6f) })
         bottom.addView(View(ctx), LayoutParams(0, -1, 1f))
-        bottom.addView(iconButton("backspace", "Delete", onBackspace), LayoutParams(px(64f), -1))
-        addView(bottom, LayoutParams(-1, px(48f)))
-        select(if (startOnGifs) list.indexOfFirst { it.kind == "gif" }.coerceAtLeast(0) else if (recents(ctx).isEmpty()) 1 else 0, list)
+        val del = iconButton("backspace", "Delete") { onBackspace() }
+        // Hold backspace to keep deleting.
+        val h = android.os.Handler(android.os.Looper.getMainLooper())
+        val rep = object : Runnable { override fun run() { onBackspace(); h.postDelayed(this, 70) } }
+        del.setOnLongClickListener { h.post(rep); true }
+        del.setOnTouchListener { _, e ->
+            if (e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) h.removeCallbacks(rep)
+            false
+        }
+        bottom.addView(del, LayoutParams(px(68f), -1))
+        addView(bottom, LayoutParams(-1, px(50f)))
+        selectTab(0, scroll = false)
     }
 
-    private fun select(i: Int, list: List<Tab>) {
-        for (c in 0 until tabs.childCount) {
-            tabs.getChildAt(c).background = if (c == i) GradientDrawable().apply {
-                cornerRadius = 10 * dp; setColor(KbTheme.mix(t.bg, t.acc, 0.3f))
-            } else null
+    /** Reopening the cached panel: refresh the recents row and jump back to the top. */
+    fun reopen() {
+        if (hasRecents) grid.setSectionItems(0, recents(context))
+        grid.scrollTo(0, 0)
+        selectTab(0, scroll = true)
+    }
+
+    private fun selectTab(i: Int, scroll: Boolean) {
+        if (i == currentTab) return
+        currentTab = i
+        tabViews.forEachIndexed { j, v ->
+            v.background = if (j == i) GradientDrawable().apply { cornerRadius = 12 * dp; setColor(KbTheme.mix(t.bg, t.acc, 0.28f)) } else null
+            v.alpha = if (j == i) 1f else 0.75f
         }
-        val tab = list[i]
-        onGifTab = tab.kind == "gif"
-        if (tab.kind == "gif") { showGifs(); return }
-        val items = tab.items().map { if (tab.kind == "emoji") preferredTone(context, it) else it }
-        val wide = tab.kind == "wide"
-        grid.numColumns = when (tab.kind) { "wide" -> 3; "symbol" -> 9; else -> 8 }
-        grid.adapter = object : BaseAdapter() {
-            override fun getCount() = items.size
-            override fun getItem(p: Int) = items[p]
-            override fun getItemId(p: Int) = p.toLong()
-            override fun getView(p: Int, convert: View?, parent: ViewGroup?): View {
-                val v = (convert as? TextView) ?: label("", if (wide) 15f else if (tab.kind == "symbol") 22f else 26f).apply {
-                    layoutParams = AbsListView.LayoutParams(-1, px(if (wide) 44f else 48f))
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
-                }
-                v.text = items[p]
-                return v
-            }
-        }
-        grid.setOnItemClickListener { _, _, p, _ ->
-            val e = items[p]
-            if (tab.kind != "symbol") addRecent(context, e)
-            onEmoji(e)
-        }
-        grid.setOnItemLongClickListener { _, view, p, _ ->
-            val base = baseOf(context, items[p]) ?: return@setOnItemLongClickListener false
-            showTones(view, base)
-            true
-        }
+        if (scroll) tabViews.getOrNull(i)?.let { v -> tabScroll.smoothScrollTo((v.left - tabScroll.width / 2 + v.width / 2).coerceAtLeast(0), 0) }
     }
 
     /** Long-press: the six skin-tone versions. The one you pick is remembered for that emoji. */
-    private fun showTones(anchor: View, base: String) {
+    private fun showTones(anchor: android.graphics.Rect, base: String) {
         val variants = listOf(base) + (tones(context)[base] ?: return)
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            background = GradientDrawable().apply { cornerRadius = 14 * dp; setColor(modColor()); setStroke(px(1f), t.border) }
+            background = GradientDrawable().apply { cornerRadius = 16 * dp; setColor(modColor()); setStroke(px(1f), t.border) }
+            elevation = 8 * dp
             setPadding(px(4f), px(4f), px(4f), px(4f))
         }
         variants.forEach { v ->
-            row.addView(label(v, 26f).apply {
+            row.addView(label(v, 28f).apply {
                 setOnClickListener {
                     Prefs.get(context).edit().putString("tone_$base", v).apply()
                     addRecent(context, v)
                     onEmoji(v)
                     toneWin.dismiss()
-                    (grid.adapter as? BaseAdapter)?.notifyDataSetChanged()
+                    grid.replace(base, v)
                 }
-            }, LayoutParams(px(46f), px(50f)))
+            }, LayoutParams(px(48f), px(52f)))
         }
         toneWin.contentView = row
-        toneWin.width = px(46f) * variants.size + px(8f)
-        toneWin.height = px(58f)
-        toneWin.showAsDropDown(anchor, -(toneWin.width - anchor.width) / 2, -anchor.height - px(62f))
-    }
-
-    private fun showGifs() {
-        val files = gifFiles(context)
-        grid.setOnItemLongClickListener(null)
-        val online = onRemoteGif != null && GifOnline.enabled(context)
-        if (files.isEmpty() && !online) {
-            grid.numColumns = 1
-            grid.setOnItemClickListener(null)
-            grid.adapter = message("Add your own GIFs and stickers in MyKey settings → Tools, or turn on online GIF search there.")
-            return
-        }
-        bindGifGrid(grid, files, emptyList(), onGif, onRemoteGif)
-        if (online) GifOnline.search(context, "") { gifs, err ->
-            if (onGifTab) bindGifGrid(grid, files, gifs, onGif, onRemoteGif)
-            if (err != null && files.isEmpty()) { grid.numColumns = 1; grid.adapter = message(err) }
-        }
-    }
-
-    private fun message(text: String) = object : BaseAdapter() {
-        override fun getCount() = 1
-        override fun getItem(p: Int) = ""
-        override fun getItemId(p: Int) = 0L
-        override fun getView(p: Int, c: View?, parent: ViewGroup?) = label(text, 14f).apply {
-            alpha = 0.7f
-            setPadding(px(16f), px(30f), px(16f), px(30f))
-        }
+        toneWin.width = px(48f) * variants.size + px(8f)
+        toneWin.height = px(60f)
+        val loc = IntArray(2)
+        grid.getLocationInWindow(loc)
+        val x = (loc[0] + anchor.centerX() - toneWin.width / 2).coerceIn(0, maxOf(0, rootView.width - toneWin.width))
+        toneWin.showAtLocation(grid, Gravity.NO_GRAVITY, x, loc[1] + anchor.top - toneWin.height - px(6f))
     }
 
     companion object {
@@ -315,13 +292,16 @@ class EmojiPanel(
         private var toneBase: Map<String, String>? = null
         private var symbolCache: List<Pair<String, List<String>>>? = null
 
-        private val glyphPaint = android.graphics.Paint()
+        private val glyphPaint = ThreadLocal.withInitial { android.graphics.Paint() }
 
         /**
          * True if this phone's emoji font can draw it. Brand-new emoji (newer than the phone's font)
          * would show as empty boxes in every app, so they're left out until the phone supports them.
          */
-        fun supported(e: String) = glyphPaint.hasGlyph(e)
+        fun supported(e: String) = glyphPaint.get()!!.hasGlyph(e)
+
+        /** Loads and checks all emoji data off the main thread, so the panel opens instantly. */
+        fun preload(ctx: Context) { data(ctx); tones(ctx); symbols(ctx) }
 
         /** Emoji grouped by category, from assets/emoji.txt (group, emoji, name), limited to what the phone can show. */
         fun data(ctx: Context): LinkedHashMap<String, List<Pair<String, String>>> {
@@ -413,6 +393,192 @@ class EmojiPanel(
             Prefs.get(ctx).edit().putString("emoji_recent", list.joinToString("\u0001")).apply()
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------
+
+/**
+ * One continuous, virtualised emoji grid: every category in a single scroll with headings.
+ * Only the visible rows are drawn, so scrolling and flinging stay smooth with thousands of emoji.
+ */
+@android.annotation.SuppressLint("ViewConstructor")
+class EmojiGrid(
+    ctx: Context, private val t: KbTheme, private val sections: List<Section>,
+    private val onTap: (String, Section) -> Unit,
+    private val onLong: (String, android.graphics.Rect) -> Unit,
+    private val onSection: (Int) -> Unit,
+) : View(ctx) {
+    class Section(val title: String, val items: List<String>, val cols: Int, val wide: Boolean = false)
+
+    private class Row(val section: Int, val top: Float, val height: Float, val header: Boolean, val start: Int)
+
+    private val d = resources.displayMetrics.density
+    private val headerH = 30 * d
+    private val rows = ArrayList<Row>()
+    private val sectionTops = FloatArray(sections.size)
+    private var contentH = 0f
+    private var laidOutWidth = 0
+    private val scroller = android.widget.OverScroller(ctx)
+    private val emojiPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textAlign = android.graphics.Paint.Align.CENTER }
+    private val headerPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = t.fg; alpha = 150; textSize = 12.5f * d; isFakeBoldText = true }
+    private val pressPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = KbTheme.mix(t.bg, t.fg, 0.14f) }
+    private var pressed: Pair<Int, Int>? = null   // (row index, column)
+    private var pressAnim = 0f
+    private var lastSection = -1
+
+    private val gestures = android.view.GestureDetector(ctx, object : android.view.GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: android.view.MotionEvent): Boolean {
+            scroller.forceFinished(true)
+            pressed = hit(e.x, e.y)
+            pressAnim = 0f
+            animatePress()
+            invalidate()
+            return true
+        }
+        override fun onSingleTapUp(e: android.view.MotionEvent): Boolean {
+            val h = hit(e.x, e.y) ?: return true
+            item(h)?.let { (txt, sec) -> performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP); onTap(txt, sec) }
+            releasePress()
+            return true
+        }
+        override fun onLongPress(e: android.view.MotionEvent) {
+            val h = hit(e.x, e.y) ?: return
+            item(h)?.let { (txt, _) -> onLong(txt, cellRect(h)) }
+            releasePress()
+        }
+        override fun onScroll(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, dx: Float, dy: Float): Boolean {
+            if (pressed != null) releasePress()
+            scrollTo(0, (scrollY + dy).toInt().coerceIn(0, maxScroll()))
+            return true
+        }
+        override fun onFling(e1: android.view.MotionEvent?, e2: android.view.MotionEvent, vx: Float, vy: Float): Boolean {
+            scroller.fling(0, scrollY, 0, -vy.toInt(), 0, 0, 0, maxScroll(), 0, (40 * d).toInt())
+            postInvalidateOnAnimation()
+            return true
+        }
+    })
+
+    private fun maxScroll() = (contentH - height).toInt().coerceAtLeast(0)
+
+    private fun build(w: Int) {
+        rows.clear()
+        var y = 0f
+        sections.forEachIndexed { si, s ->
+            sectionTops[si] = y
+            rows.add(Row(si, y, headerH, true, 0)); y += headerH
+            val cellH = if (s.wide) 46 * d else (w / s.cols.toFloat()).coerceAtMost(54 * d)
+            var i = 0
+            while (i < s.items.size) { rows.add(Row(si, y, cellH, false, i)); y += cellH; i += s.cols }
+        }
+        contentH = y + 8 * d
+        laidOutWidth = w
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) { if (w != laidOutWidth) build(w) }
+
+    private fun firstVisible(): Int {
+        var lo = 0; var hi = rows.size - 1
+        while (lo < hi) { val m = (lo + hi + 1) / 2; if (rows[m].top <= scrollY) lo = m else hi = m - 1 }
+        return lo
+    }
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        if (rows.isEmpty()) return
+        val bottom = scrollY + height
+        var r = firstVisible()
+        while (r < rows.size && rows[r].top < bottom) {
+            val row = rows[r]
+            val s = sections[row.section]
+            if (row.header) {
+                c.drawText(s.title.uppercase(), 14 * d, row.top + headerH * 0.68f, headerPaint)
+            } else {
+                val cw = width / s.cols.toFloat()
+                emojiPaint.textSize = if (s.wide) 15 * d else minOf(row.height * 0.6f, 30 * d)
+                emojiPaint.color = t.fg
+                for (col in 0 until s.cols) {
+                    val idx = row.start + col
+                    if (idx >= s.items.size) break
+                    val cx = cw * col + cw / 2
+                    val cy = row.top + row.height / 2
+                    val isPressed = pressed?.let { it.first == r && it.second == col } == true
+                    if (isPressed) {
+                        val inset = 3 * d
+                        c.drawRoundRect(cw * col + inset, row.top + inset, cw * (col + 1) - inset, row.top + row.height - inset, 12 * d, 12 * d, pressPaint)
+                        c.save(); val sc = 1f + 0.12f * pressAnim; c.scale(sc, sc, cx, cy)
+                    }
+                    c.drawText(s.items[idx], cx, cy - (emojiPaint.descent() + emojiPaint.ascent()) / 2, emojiPaint)
+                    if (isPressed) c.restore()
+                }
+            }
+            r++
+        }
+        // Report which category is on screen so the tab bar can follow.
+        val sec = rows[firstVisible()].section.let { si -> if (scrollY >= maxScroll() - 2 && maxScroll() > 0) sections.size - 1 else si }
+        if (sec != lastSection) { lastSection = sec; onSection(sec) }
+    }
+
+    override fun computeScroll() {
+        if (scroller.computeScrollOffset()) { scrollTo(0, scroller.currY.coerceIn(0, maxScroll())); postInvalidateOnAnimation() }
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: android.view.MotionEvent): Boolean {
+        if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        val handled = gestures.onTouchEvent(e)
+        if (e.actionMasked == android.view.MotionEvent.ACTION_UP || e.actionMasked == android.view.MotionEvent.ACTION_CANCEL) releasePress()
+        return handled
+    }
+
+    fun setSectionItems(i: Int, items: List<String>) {
+        (sections[i].items as? MutableList<String>)?.let { it.clear(); it.addAll(items) }
+        if (width > 0) build(width)
+        invalidate()
+    }
+
+    fun scrollToSection(i: Int) {
+        val target = sectionTops.getOrElse(i) { 0f }.toInt().coerceIn(0, maxScroll())
+        scroller.forceFinished(true)
+        scroller.startScroll(0, scrollY, 0, target - scrollY, 320)
+        postInvalidateOnAnimation()
+    }
+
+    /** Swap an emoji for its chosen skin tone everywhere it appears. */
+    fun replace(base: String, v: String) {
+        sections.forEach { s -> (s.items as? MutableList<String>)?.let { l -> l.indices.forEach { if (l[it] == base || EmojiPanel.baseOf(context, l[it]) == base) l[it] = v } } }
+        invalidate()
+    }
+
+    private fun hit(x: Float, y: Float): Pair<Int, Int>? {
+        val yy = y + scrollY
+        var lo = 0; var hi = rows.size - 1
+        while (lo < hi) { val m = (lo + hi + 1) / 2; if (rows[m].top <= yy) lo = m else hi = m - 1 }
+        val row = rows.getOrNull(lo) ?: return null
+        if (row.header || yy > row.top + row.height) return null
+        val s = sections[row.section]
+        val col = (x / (width / s.cols.toFloat())).toInt().coerceIn(0, s.cols - 1)
+        return if (row.start + col < s.items.size) lo to col else null
+    }
+
+    private fun item(h: Pair<Int, Int>): Pair<String, Section>? {
+        val row = rows[h.first]; val s = sections[row.section]
+        return s.items.getOrNull(row.start + h.second)?.let { it to s }
+    }
+
+    private fun cellRect(h: Pair<Int, Int>): android.graphics.Rect {
+        val row = rows[h.first]; val cw = width / sections[row.section].cols.toFloat()
+        val top = (row.top - scrollY).toInt()
+        return android.graphics.Rect((cw * h.second).toInt(), top, (cw * (h.second + 1)).toInt(), top + row.height.toInt())
+    }
+
+    private fun animatePress() {
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 90
+            addUpdateListener { pressAnim = it.animatedValue as Float; invalidate() }
+            start()
+        }
+    }
+
+    private fun releasePress() { if (pressed != null) { pressed = null; invalidate() } }
 }
 
 // ---------------------------------------------------------------------------------------

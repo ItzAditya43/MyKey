@@ -123,7 +123,8 @@ class ThemeSwatch(ctx: Context, val theme: KbTheme, private val p: Palette) : Vi
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val d = resources.displayMetrics.density
 
-    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension((116 * d).toInt(), (78 * d).toInt())
+    override fun onMeasure(w: Int, h: Int) =
+        setMeasuredDimension(resolveSize((116 * d).toInt(), w), resolveSize((78 * d).toInt(), h))
 
     override fun onDraw(c: Canvas) {
         val w = width.toFloat()

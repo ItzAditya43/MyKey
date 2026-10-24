@@ -75,7 +75,9 @@ class SettingsActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (stack.lastOrNull() == "home") swap(build("home"), forward = true, animate = false)
+        // Show current values when you come back (e.g. after switching theme from the keyboard).
+        val top = stack.lastOrNull() ?: return
+        if (top !in setOf("shortcuts", "learning", "layouts", "theme_editor")) swap(build(top), forward = true, animate = false)
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -137,7 +139,11 @@ class SettingsActivity : Activity() {
     }
 
     private fun build(page: String): View = when (page) {
-        "look" -> look()
+        "look", "theme" -> themePage()
+        "size" -> sizePage()
+        "keys" -> keysPage()
+        "feel" -> feelPage()
+        "profiles" -> profilesPage()
         "theme_editor" -> themeEditor()
         "languages" -> languages()
         "typing" -> typing()
@@ -244,18 +250,24 @@ class SettingsActivity : Activity() {
         val learned = Langs.enabled(prefs).sumOf { user.allWords(it).size }
         val st = Stats.get(this)
         return listOf(
-            "Keyboard" to listOf(
-                Link("brush", c("#FF6B4A"), "Look & size", "$themeName · ${prefs.getInt("scale", KbConfig.DEF_SCALE)}%", "look", "theme colour size height amoled oled font sound vibration background photo animation"),
+            "Look" to listOf(
+                Link("brush", c("#FF6B4A"), "Theme", KbConfig.themeName(this, prefs), "theme", "theme colour amoled oled background photo gradient aurora day night dark"),
+                Link("resize", c("#F0563A"), "Size", "${prefs.getInt("scale", KbConfig.DEF_SCALE)}% · keys ${prefs.getInt("key_h", KbConfig.DEF_HEIGHT)}dp", "size", "height width margin gap roundness letter number row"),
+                Link("keyboard", c("#C04BD6"), "Keys & animation", KbConfig.styles.firstOrNull { it.first == prefs.getString("key_style", "") }?.second ?: "Style, animation, font", "keys", "outline borderless pop ripple glow fade font bold shadow hint trail"),
+                Link("voice", c("#7B61FF"), "Sound & vibration", listOf(if (f("haptics")) "Vibration on" else "Vibration off", if (f("sounds")) "sound on" else "sound off").joinToString(" · "), "feel", "haptic vibrate sound click volume silent"),
+            ),
+            "Typing" to listOf(
                 Link("globe", c("#3D8BFF"), "Languages", langs, "languages", "english spanish russian japanese mandarin chinese layout qwerty switch"),
                 Link("keyboard", c("#8E6CFF"), "Typing", "${typing.count { f(it.id) }} of ${typing.size} on", "typing", "glide swipe gesture trackpad timing long-press backspace split"),
                 Link("check", c("#22B573"), "Autocorrect", if (f("autocorrect")) "On" else "Off", "correction", "spelling capital punctuation emoji calculator units date"),
                 Link("hold", c("#FF9F1C"), "Hold keys", "What each key gives on long-press", "longpress", "long press popup symbols accents hint"),
+                Link("snippet", c("#E8A500"), "Shortcuts & snippets", "${user.allShortcuts().size} shortcuts", "shortcuts", "text expansion"),
             ),
             "Tools" to listOf(
-                Link("toolbar", c("#FF4D8D"), "Toolbar", "${Toolbar.visible(prefs).size} buttons", "toolbar", "buttons order"),
+                Link("toolbar", c("#FF4D8D"), "Toolbar", "${Toolbar.visible(prefs).size} buttons", "toolbar", "buttons order theme button favourites"),
                 Link("emoji", c("#00B3A4"), "Panels & chips", "Emoji, GIFs, clipboard, voice", "tools", "emoji gif clipboard snippets voice password email one-handed floating"),
-                Link("snippet", c("#E8A500"), "Shortcuts & snippets", "${user.allShortcuts().size} shortcuts", "shortcuts", "text expansion"),
-                Link("layout", c("#5A9BD4"), "Layouts", "Edit keys as JSON", "layouts", "json custom keys"),
+                Link("hand", c("#2BB3E0"), "App profiles", if (f("per_app_theme")) "On" else "Off", "profiles", "per app game split position size"),
+                Link("layout", c("#5A9BD4"), "Layouts (advanced)", "Edit keys as JSON", "layouts", "json custom keys"),
             ),
             "You" to listOf(
                 Link("sparkle", c("#A259FF"), "Learning", if (f("incognito")) "Incognito is on" else "$learned words learned", "learning", "words dictionary incognito forget"),
@@ -266,8 +278,11 @@ class SettingsActivity : Activity() {
         )
     }
 
-    private val pageOf = mapOf("Typing" to "typing", "Correction" to "correction", "Learning" to "learning", "Look" to "look",
+    private val pageOf = mapOf("Typing" to "typing", "Correction" to "correction", "Learning" to "learning", "Look" to "keys",
         "Tools" to "tools", "Privacy" to "privacy", "Languages" to "languages")
+    private val featurePage = mapOf("number_row" to "size", "hints" to "keys", "key_preview" to "keys", "key_shadow" to "keys",
+        "bold_labels" to "keys", "haptics" to "feel", "sounds" to "feel", "sounds_silent" to "feel", "auto_theme" to "theme",
+        "per_app_theme" to "profiles", "custom_layouts" to "layouts", "tool_theme" to "toolbar", "tool_resize" to "toolbar", "quick_toolbar" to "toolbar")
 
     private fun home(): View {
         val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER }
@@ -325,7 +340,7 @@ class SettingsActivity : Activity() {
                     k.addDivided(card, k.linkRow(l.icon, l.tint, l.title, l.value) { open(l.page) })
                 }
                 Features.all.filter { it.title.lowercase().contains(q) || it.desc.lowercase().contains(q) }.take(12).forEach { ft ->
-                    val target = if (ft.id in setOf("number_row", "hints", "key_preview")) "look" else pageOf[ft.category] ?: "home"
+                    val target = featurePage[ft.id] ?: pageOf[ft.category] ?: "home"
                     val link = all.firstOrNull { it.page == target }
                     k.addDivided(card, k.linkRow(link?.icon ?: "settings", link?.tint ?: p.muted, ft.title, link?.title ?: "") { open(target) })
                 }
@@ -463,122 +478,43 @@ class SettingsActivity : Activity() {
 
     // ---------- look ----------
 
-    private fun look(): View {
+    // ---------- theme ----------
+
+    private fun themePage(): View {
         val pv = Preview(previewLang())
-        return page("Look & size", "Changes show live above.", pv.box) {
-            addView(k.eyebrow("Theme"))
+        return page("Theme", "Tap a theme to use it.", pv.box) {
+            addView(k.eyebrow("Themes"))
             val swatches = ArrayList<ThemeSwatch>()
-            val current = prefs.getString("theme", "Graphite")
-            val items = Themes.all(this@SettingsActivity).map { t ->
-                k.column().apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    val s = ThemeSwatch(this@SettingsActivity, t, p).also { it.picked = t.name == current }
-                    swatches.add(s)
-                    addView(s, LinearLayout.LayoutParams(-2, -2))
-                    addView(k.text(t.name, 12.5f, p.muted, 500), k.lp(-2, top = 6))
-                    setOnClickListener {
-                        prefs.edit().putString("theme", t.name).remove("key_style").apply()
-                        swatches.forEach { it.picked = it === s }
-                        pv.refresh()
-                    }
+            val current = KbConfig.themeName(this@SettingsActivity, prefs)
+            // A wrapping grid, so every theme is visible at once.
+            Themes.all(this@SettingsActivity).chunked(3).forEach { rowThemes ->
+                val r = k.row().apply { gravity = Gravity.TOP }
+                rowThemes.forEach { t ->
+                    r.addView(k.column().apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        setPadding(0, k.dp(4), 0, k.dp(8))
+                        val sw = ThemeSwatch(this@SettingsActivity, t, p).also { it.picked = t.name == current }
+                        swatches.add(sw)
+                        addView(sw, LinearLayout.LayoutParams(-2, -2))
+                        addView(k.text(t.name, 12.5f, if (t.name == current) p.fg else p.muted, if (t.name == current) 650 else 500).apply {
+                            gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+                        }, k.lp(-2, top = 4))
+                        setOnClickListener {
+                            prefs.edit().putString("theme", t.name).remove("key_style").apply()
+                            if (f("auto_theme")) prefs.edit().putString(if (p.dark) "theme_night" else "theme_day", t.name).apply()
+                            swatches.forEach { it.picked = it === sw }
+                            pv.refresh()
+                        }
+                    }, LinearLayout.LayoutParams(0, -2, 1f))
                 }
+                repeat(3 - rowThemes.size) { r.addView(View(this@SettingsActivity), LinearLayout.LayoutParams(0, 1, 1f)) }
+                addView(r, k.lp())
             }
-            addView(k.chipRow(items))
-            addView(k.button("Create your own theme", "secondary") { open("theme_editor") }, k.lp(top = 12))
+            addView(k.button("Create your own theme", "secondary") { open("theme_editor") }, k.lp(top = 8))
 
-            // The toolbar's theme button and which themes it switches between.
-            section("Theme button in the toolbar") {
-                toggles("tool_theme") { reload() }
-                divided(k.text("Tapping that button switches between the themes ticked below. Ticking a theme here doesn't change your current theme; tap a theme card above for that.", 13.5f, p.muted).apply {
-                    setPadding(0, k.dp(10), 0, k.dp(12))
-                })
-            }
-            val favs = (prefs.getString("fav_themes", null) ?: listOf(current, "Crimson Noir", "Abyss").distinct().joinToString(","))
-                .split(',').filter { it.isNotEmpty() }.toMutableList()
-            val favChips = ArrayList<TextView>()
-            fun styleChip(c: TextView, name: String) {
-                val on = name in favs
-                c.text = if (on) "✓  $name" else name
-                c.setTextColor(if (on) p.accentFg else p.fg)
-                c.background = k.ripple(if (on) p.accent else p.surface2, 99f)
-            }
-            Themes.all(this@SettingsActivity).forEach { th ->
-                lateinit var chip: TextView
-                chip = k.chip(th.name, false) {
-                    val adding = th.name !in favs
-                    if (!adding && favs.size <= 1) {
-                        android.widget.Toast.makeText(this@SettingsActivity, "Keep at least one theme for the button.", android.widget.Toast.LENGTH_SHORT).show()
-                        return@chip
-                    }
-                    if (adding) favs.add(th.name) else favs.remove(th.name)
-                    prefs.edit().putString("fav_themes", favs.joinToString(",")).apply()
-                    styleChip(chip, th.name)
-                    android.widget.Toast.makeText(this@SettingsActivity,
-                        if (adding) "Added ${th.name} to the theme button" else "Removed ${th.name} from the theme button", android.widget.Toast.LENGTH_SHORT).show()
-                }
-                styleChip(chip, th.name)
-                favChips.add(chip)
-            }
-            addView(k.chipRow(favChips).apply { alpha = if (f("tool_theme")) 1f else 0.45f }, k.lp(top = 10))
-
-            section("Keyboard size") {
-                divided(k.slider("Overall size", "%", 70, 140, prefs.getInt("scale", KbConfig.DEF_SCALE)) { save("scale", it); pv.refresh() })
-                divided(k.slider("Side margins", "dp", 0, 40, prefs.getInt("side_margin", 0)) { save("side_margin", it); pv.refresh() })
-                divided(k.slider("Space below keyboard", "dp", 0, 40, prefs.getInt("bottom_gap", 0)) { save("bottom_gap", it); pv.refresh() })
-            }
-            section("Keys") {
-                divided(k.slider("Key height", "dp", 38, 72, prefs.getInt("key_h", KbConfig.DEF_HEIGHT)) { save("key_h", it); pv.refresh() })
-                divided(k.slider("Gap between keys", "dp", 0, 12, prefs.getInt("gap", KbConfig.DEF_GAP)) { save("gap", it); pv.refresh() })
-                divided(k.slider("Corner roundness", "dp", 0, 24, prefs.getInt("radius", KbConfig.DEF_RADIUS)) { save("radius", it); pv.refresh() })
-                divided(k.slider("Letter size", "sp", 14, 28, prefs.getInt("label", KbConfig.DEF_LABEL)) { save("label", it); pv.refresh() })
-            }
-            val theme = Themes.byName(this@SettingsActivity, current)
-            choice("Key style", KbConfig.styles, prefs.getString("key_style", if (theme.amoled) "outline" else "filled")!!) {
-                prefs.edit().putString("key_style", it).apply(); pv.refresh()
-            }
-            choice("Press animation", KbConfig.anims, prefs.getString("press_anim", "pop")!!) {
-                prefs.edit().putString("press_anim", it).apply(); pv.refresh()
-            }
-            choice("Letter font", KbConfig.fonts, prefs.getString("key_font", "system")!!) {
-                prefs.edit().putString("key_font", it).apply(); pv.refresh()
-            }
-            section("Details") {
-                toggles("number_row", "hints", "key_preview", "key_shadow", "bold_labels") { pv.refresh() }
-            }
-
-            choice("Background effect", KbConfig.bgEffects, prefs.getString("bg_effect", "none")!!) {
+            choice("Background", KbConfig.bgEffects, prefs.getString("bg_effect", "none")!!) {
                 prefs.edit().putString("bg_effect", it).apply(); pv.refresh()
             }
-
-            section("Day and night") {
-                toggles("auto_theme") { reload() }
-            }
-            if (f("auto_theme")) {
-                val names = Themes.all(this@SettingsActivity).map { it.name to it.name }
-                choice("Day theme", names, prefs.getString("theme_day", prefs.getString("theme", "Graphite"))!!) {
-                    prefs.edit().putString("theme_day", it).apply(); pv.refresh()
-                }
-                choice("Night theme", names, prefs.getString("theme_night", "Crimson Noir")!!) {
-                    prefs.edit().putString("theme_night", it).apply(); pv.refresh()
-                }
-            }
-            section("App profiles") {
-                toggles("per_app_theme") { reload() }
-                if (f("per_app_theme")) {
-                    val apps = (prefs.getString("recent_apps", "") ?: "").split(',').filter { it.isNotEmpty() }
-                    if (apps.isEmpty()) divided(k.text("Type in a few apps first; they'll show up here.", 13.5f, p.muted).apply { setPadding(0, k.dp(12), 0, k.dp(14)) })
-                    apps.forEach { a ->
-                        val bits = listOfNotNull(
-                            prefs.getString("app_theme_$a", null),
-                            prefs.getString("app_split_$a", null)?.let { if (it == "on") "split" else "no split" },
-                            prefs.getString("app_hand_$a", null),
-                            prefs.getInt("app_scale_$a", 0).takeIf { it > 0 }?.let { "$it%" },
-                        )
-                        divided(k.navRow(appName(a), if (bits.isEmpty()) "Default" else bits.joinToString(" · ")) { open("apptheme:$a") })
-                    }
-                }
-            }
-
             section("Background photo") {
                 val has = BgImage.file(this@SettingsActivity) != null
                 divided(k.navRow(if (has) "Change photo" else "Choose a photo", if (has) "Set" else "None") {
@@ -593,26 +529,104 @@ class SettingsActivity : Activity() {
                     divided(k.navRow("Remove photo", "") { BgImage.remove(this@SettingsActivity); reload() })
                 }
             }
+            section("Day and night") {
+                toggles("auto_theme") { reload() }
+            }
+            if (f("auto_theme")) {
+                val names = Themes.all(this@SettingsActivity).map { it.name to it.name }
+                choice("Day theme", names, prefs.getString("theme_day", prefs.getString("theme", "Graphite"))!!) {
+                    prefs.edit().putString("theme_day", it).apply(); pv.refresh()
+                }
+                choice("Night theme", names, prefs.getString("theme_night", "Crimson Noir")!!) {
+                    prefs.edit().putString("theme_night", it).apply(); pv.refresh()
+                }
+            }
+        }
+    }
 
-            choice("Key sound", Sounds.packs, prefs.getString("sound_pack", "system")!!) {
-                prefs.edit().putString("sound_pack", it).apply()
-                if (it != "system") Sounds.play(this@SettingsActivity, it, prefs.getInt("sound_volume", 50) / 100f)
-                pv.refresh()
+    // ---------- size ----------
+
+    private fun sizePage(): View {
+        val pv = Preview(previewLang())
+        return page("Size", "Drag a slider and watch the keyboard.", pv.box) {
+            section("Keyboard") {
+                divided(k.slider("Overall size", "%", 70, 140, prefs.getInt("scale", KbConfig.DEF_SCALE)) { save("scale", it); pv.refresh() })
+                divided(k.slider("Side margins", "dp", 0, 40, prefs.getInt("side_margin", 0)) { save("side_margin", it); pv.refresh() })
+                divided(k.slider("Space below keyboard", "dp", 0, 40, prefs.getInt("bottom_gap", 0)) { save("bottom_gap", it); pv.refresh() })
             }
-            section("Feel") {
-                toggles("haptics", "sounds", "sounds_silent") { pv.refresh() }
-                divided(k.slider("Key sound volume", "%", 0, 100, prefs.getInt("sound_volume", 50)) { save("sound_volume", it) })
+            section("Keys") {
+                divided(k.slider("Key height", "dp", 38, 72, prefs.getInt("key_h", KbConfig.DEF_HEIGHT)) { save("key_h", it); pv.refresh() })
+                divided(k.slider("Gap between keys", "dp", 0, 12, prefs.getInt("gap", KbConfig.DEF_GAP)) { save("gap", it); pv.refresh() })
+                divided(k.slider("Corner roundness", "dp", 0, 24, prefs.getInt("radius", KbConfig.DEF_RADIUS)) { save("radius", it); pv.refresh() })
+                divided(k.slider("Letter size", "sp", 14, 28, prefs.getInt("label", KbConfig.DEF_LABEL)) { save("label", it); pv.refresh() })
             }
-            choice("Vibration strength", KbConfig.hapticLevels.mapIndexed { i, s -> i.toString() to s }, prefs.getInt("haptic_level", 1).toString()) {
-                save("haptic_level", it.toInt()); pv.refresh()
-            }
-            addView(k.button("Reset look to default", "secondary") {
-                prefs.edit().apply {
-                    listOf("theme", "key_h", "gap", "radius", "label", "scale", "side_margin", "bottom_gap",
-                        "key_style", "press_anim", "key_font", "haptic_level", "sound_volume", "bg_dim", "key_opacity").forEach { remove(it) }
-                }.apply()
+            section("Rows") { toggles("number_row") { pv.refresh() } }
+            addView(k.button("Reset size", "secondary") {
+                prefs.edit().apply { listOf("key_h", "gap", "radius", "label", "scale", "side_margin", "bottom_gap").forEach { remove(it) } }.apply()
                 reload()
             }, k.lp(top = 22))
+        }
+    }
+
+    // ---------- keys & animation ----------
+
+    private fun keysPage(): View {
+        val pv = Preview(previewLang())
+        val theme = Themes.byName(this, KbConfig.themeName(this, prefs))
+        return page("Keys & animation", "Tap keys above to feel the animation.", pv.box) {
+            choice("Key style", KbConfig.styles, prefs.getString("key_style", if (theme.amoled) "outline" else "filled")!!) {
+                prefs.edit().putString("key_style", it).apply(); pv.refresh()
+            }
+            choice("Press animation", KbConfig.anims, prefs.getString("press_anim", "pop")!!) {
+                prefs.edit().putString("press_anim", it).apply(); pv.refresh()
+            }
+            choice("Letter font", KbConfig.fonts, prefs.getString("key_font", "system")!!) {
+                prefs.edit().putString("key_font", it).apply(); pv.refresh()
+            }
+            choice("Glide trail", KbConfig.trails, prefs.getString("trail_style", "comet")!!) {
+                prefs.edit().putString("trail_style", it).apply(); pv.refresh()
+            }
+            section("Details") { toggles("hints", "key_preview", "key_shadow", "bold_labels") { pv.refresh() } }
+        }
+    }
+
+    // ---------- sound & vibration ----------
+
+    private fun feelPage(): View = page("Sound & vibration", "How keys sound and feel.") {
+        section("Vibration") { toggles("haptics") }
+        choice("Vibration strength", KbConfig.hapticLevels.mapIndexed { i, s -> i.toString() to s }, prefs.getInt("haptic_level", 1).toString()) {
+            save("haptic_level", it.toInt())
+        }
+        section("Sound") {
+            toggles("sounds", "sounds_silent")
+            divided(k.slider("Volume", "%", 0, 100, prefs.getInt("sound_volume", 50)) { save("sound_volume", it) })
+        }
+        choice("Key sound", Sounds.packs, prefs.getString("sound_pack", "system")!!) {
+            prefs.edit().putString("sound_pack", it).apply()
+            if (it != "system") Sounds.play(this@SettingsActivity, it, prefs.getInt("sound_volume", 50) / 100f, f("sounds_silent"))
+        }
+        addView(k.text("Tip: if you hear nothing, your phone may be on silent or vibrate. Turn on “Key sounds in silent and vibrate mode”.", 13f, p.muted), k.lp(top = 12))
+    }
+
+    // ---------- app profiles ----------
+
+    private fun profilesPage(): View = page("App profiles", "A different keyboard for specific apps.") {
+        section("Profiles") { toggles("per_app_theme") { reload() } }
+        if (f("per_app_theme")) {
+            addView(k.eyebrow("Apps you've typed in"))
+            val apps = (prefs.getString("recent_apps", "") ?: "").split(',').filter { it.isNotEmpty() }
+            val card = k.card()
+            if (apps.isEmpty()) card.addView(k.text("Type in a few apps first; they'll show up here.", 14f, p.muted).apply { setPadding(0, k.dp(16), 0, k.dp(16)) })
+            apps.forEach { a ->
+                val bits = listOfNotNull(
+                    prefs.getString("app_theme_$a", null),
+                    prefs.getString("app_split_$a", null)?.let { if (it == "on") "split" else "no split" },
+                    prefs.getString("app_hand_$a", null),
+                    prefs.getInt("app_scale_$a", 0).takeIf { it > 0 }?.let { "$it%" },
+                )
+                k.addDivided(card, k.navRow(appName(a), if (bits.isEmpty()) "Default" else bits.joinToString(" · ")) { open("apptheme:$a") })
+            }
+            addView(card, k.lp())
         }
     }
 
@@ -987,6 +1001,7 @@ class SettingsActivity : Activity() {
         }
         refreshPreview()
         return page("Toolbar", "Drag ≡ to reorder, switch to show or hide.", previewRow) {
+            // (theme button themes are further down this page)
             section("Behaviour") {
                 toggles("quick_toolbar")
                 divided(k.toggleRow("Show automatically", "When there's nothing to suggest. Off: only when you tap the grid button.",
@@ -994,6 +1009,7 @@ class SettingsActivity : Activity() {
             }
             addView(k.eyebrow("Buttons"))
             val list = k.column().apply { background = k.rounded(p.surface, 20f); setPadding(k.dp(10), k.dp(6), k.dp(6), k.dp(6)) }
+            val favSection = k.column()
             val hidden = Toolbar.hidden(prefs)
             val order = Toolbar.order(prefs).toMutableList()
             val drag = com.mobilekey.ui.DragReorder(list) { from, to ->
@@ -1021,6 +1037,29 @@ class SettingsActivity : Activity() {
                 drag.attach(handle, r, immediate = true)
             }
             addView(list, k.lp())
+
+            // Which themes the theme button switches between.
+            addView(k.eyebrow("Themes for the theme button"))
+            addView(k.text("Each tap of the theme button moves to the next ticked theme.", 13.5f, p.muted).apply { setPadding(k.dp(18), 0, k.dp(18), k.dp(10)) })
+            val current = prefs.getString("theme", "Graphite")
+            val favs = (prefs.getString("fav_themes", null) ?: listOf(current, "Crimson Noir", "Abyss").distinct().joinToString(","))
+                .split(',').filter { it.isNotEmpty() }.toMutableList()
+            val favCard = k.card()
+            Themes.all(this@SettingsActivity).forEach { th ->
+                val r = k.row().apply { setPadding(0, k.dp(8), 0, k.dp(8)) }
+                r.addView(ThemeSwatch(this@SettingsActivity, th, p), LinearLayout.LayoutParams(k.dp(62), k.dp(42)).apply { rightMargin = k.dp(12) })
+                r.addView(k.text(th.name, 15.5f, p.fg, 540), LinearLayout.LayoutParams(0, -2, 1f))
+                r.addView(com.mobilekey.ui.Toggle(this@SettingsActivity, p).apply {
+                    set(th.name in favs, false)
+                    onChange = { on ->
+                        if (on) { if (th.name !in favs) favs.add(th.name) }
+                        else if (favs.size > 1) favs.remove(th.name) else set(true, true)
+                        prefs.edit().putString("fav_themes", favs.joinToString(",")).apply()
+                    }
+                })
+                k.addDivided(favCard, r)
+            }
+            addView(favCard, k.lp())
             addView(k.button("Reset toolbar", "secondary") {
                 prefs.edit().remove("toolbar_order").remove("toolbar_hidden").remove("toolbar_auto").apply(); reload()
             }, k.lp(top = 18))

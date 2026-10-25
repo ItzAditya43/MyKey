@@ -66,13 +66,13 @@ object Suggest {
             }
             if (!known && lower.length >= 2) {
                 d.corrections(lower, if (aggressive) 2f else 1.4f, near).forEach { (w, dist) ->
-                    if (w != lower) add(w, (d.score(w) ?: 0f) - dist * 4f - penalty, true)
+                    if (w != lower) add(w, (d.score(w) ?: 0f) - dist * CLOSENESS - penalty, true)
                 }
             } else if (weak) {
                 d.corrections(lower, 1f, near).forEach { (w, dist) ->
                     val ws = d.score(w) ?: 0f
                     if (w != lower && ws - dictScore >= MUCH_MORE_COMMON) {
-                        add(w, ws - dist * 4f - penalty, true)
+                        add(w, ws - dist * CLOSENESS - penalty, true)
                         closeCommon.add(w)
                     }
                 }
@@ -96,6 +96,9 @@ object Suggest {
         }.distinctBy { it.lowercase() }.take(3).map { matchCase(typed, it) }
         return Suggestions(list, auto?.let { matchCase(typed, it) })
     }
+
+    /** How much one typo outweighs word frequency: the closest fix wins unless another is far more common. */
+    private const val CLOSENESS = 6f
 
     /** ln(count) below this means "rare in the word list" (about 1,000 uses). */
     private const val RARE = 6.9f

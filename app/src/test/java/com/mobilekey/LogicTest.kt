@@ -96,9 +96,9 @@ class EditDistanceTest {
 
     @Test fun distances() {
         assertEquals(0f, Edit.distance("hello", "hello", 2f, none))
-        assertEquals(0.5f, Edit.distance("helo", "hello", 2f, none))
-        assertEquals(0.5f, Edit.distance("untill", "until", 2f, none))
-        assertEquals(1f, Edit.distance("tommorow", "tomorrow", 2f, none))
+        assertEquals(0.4f, Edit.distance("helo", "hello", 2f, none))
+        assertEquals(0.4f, Edit.distance("untill", "until", 2f, none))
+        assertEquals(0.8f, Edit.distance("tommorow", "tomorrow", 2f, none), 0.001f)
         assertEquals(1f, Edit.distance("helo", "help", 2f, none))
         assertEquals(0.8f, Edit.distance("teh", "the", 2f, none))
         assertEquals(1f, Edit.distance("cat", "car", 2f, none))

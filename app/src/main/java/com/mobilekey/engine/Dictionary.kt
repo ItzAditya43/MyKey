@@ -111,7 +111,7 @@ class Dictionary private constructor(
 object Edit {
     /**
      * Damerau–Levenshtein distance where hitting a neighbouring key costs 0.6 instead of 1,
-     * swapping two letters costs 0.8 and a missing/extra doubled letter costs 0.5.
+     * swapping two letters costs 0.8 and a missing/extra doubled letter costs 0.4.
      * Returns 99 once it can't stay under [max].
      */
     fun distance(a: String, b: String, max: Float, near: (Char, Char) -> Boolean): Float {
@@ -129,8 +129,8 @@ object Edit {
                 val cb = b[j - 1]
                 val sub = if (ca == cb) 0f else if (near(ca, cb)) 0.6f else 1f
                 // Missing or extra doubled letters (helo/hello, untill/until) are the most common typo: half cost.
-                val del = if (i > 1 && ca == a[i - 2]) 0.5f else 1f
-                val ins = if (j > 1 && cb == b[j - 2]) 0.5f else 1f
+                val del = if (i > 1 && ca == a[i - 2]) 0.4f else 1f
+                val ins = if (j > 1 && cb == b[j - 2]) 0.4f else 1f
                 var v = minOf(p[j] + del, c[j - 1] + ins, p[j - 1] + sub)
                 if (i > 1 && j > 1 && ca == b[j - 2] && a[i - 2] == cb) v = minOf(v, pp[j - 2] + 0.8f)
                 c[j] = v

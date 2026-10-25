@@ -74,6 +74,21 @@ class DeviceTest {
         assertEquals("I", auto("i", en))
     }
 
+    /** Same as the real keyboard: neighbouring keys count as small typos (QWERTY rows). */
+    @Test fun fixesTyposWithKeyPositions() {
+        val rows = listOf("qwertyuiop", "asdfghjkl", "zxcvbnm")
+        val pos = HashMap<Char, android.graphics.PointF>()
+        rows.forEachIndexed { r, row -> row.forEachIndexed { i, ch -> pos[ch] = android.graphics.PointF(i + r * 0.5f, r.toFloat()) } }
+        val near: (Char, Char) -> Boolean = { a, b -> val pa = pos[a]; val pb = pos[b]; pa != null && pb != null && kotlin.math.hypot(pa.x - pb.x, pa.y - pb.y) < 1.5f }
+        fun fix(w: String) = Suggest.run(w, "en", listOf(en), user, near, true, false).auto
+        assertEquals("hello", fix("helo"))
+        assertEquals("the", fix("teh"))
+        assertEquals("until", fix("untill"))
+        assertEquals("keyboard", fix("keyboatd"))
+        assertEquals("tomorrow", fix("tommorow"))
+        assertEquals(null, fix("hello"))
+    }
+
     @Test fun leavesRealWordsAlone() {
         for (w in listOf("hello", "the", "keyboard", "tomorrow", "tho", "lol", "okay", "gonna", "wanna")) assertEquals(w, null, auto(w, en))
     }

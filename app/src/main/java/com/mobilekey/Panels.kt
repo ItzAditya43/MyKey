@@ -768,10 +768,11 @@ class EditPanel(
     init {
         setPadding(px(4f), px(4f), px(4f), px(4f))
         val rows = listOf(
-            listOf("select" to "Select", "up" to "▲", "select_all" to "Select all", "backspace" to "⌫"),
+            // Thumb-first: rarely used actions on top, arrows and paste near the bottom, ABC and ⌫ where they are on the keyboard.
+            listOf("clear" to "Clear all", "undo" to "Undo", "redo" to "Redo", "select_all" to "Select all"),
+            listOf("home" to "⇤ Start", "up" to "▲", "end" to "End ⇥", "cut" to "Cut"),
             listOf("left" to "◀", "down" to "▼", "right" to "▶", "copy" to "Copy"),
-            listOf("home" to "⇤ Start", "end" to "End ⇥", "undo" to "Undo", "cut" to "Cut"),
-            listOf("abc" to "ABC", "redo" to "Redo", "paste" to "Paste", "clear" to "Clear all"),
+            listOf("abc" to "ABC", "select" to "Select", "paste" to "Paste", "backspace" to "⌫"),
         )
         rows.forEach { r ->
             val row = LinearLayout(ctx).apply { orientation = HORIZONTAL }

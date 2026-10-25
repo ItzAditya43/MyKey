@@ -49,6 +49,13 @@ class KeyboardView(context: Context) : View(context) {
         set(v) { field = v; invalidate() }
     var spaceLabel = ""
         set(v) { field = v; invalidate() }
+    /** Until this uptime, the space bar shows the language name in the accent colour (after switching). */
+    private var spaceFlashUntil = 0L
+
+    fun flashSpace() {
+        spaceFlashUntil = android.os.SystemClock.uptimeMillis() + SPACE_FLASH_MS
+        invalidate()
+    }
 
     var keyHeightDp = 52f
     var gapDp = 5f
@@ -295,6 +302,12 @@ class KeyboardView(context: Context) : View(context) {
                 null, "space" -> t.fg
                 else -> t.modFg
             }
+            val flash = k.type == "space" && k.label.isEmpty() && android.os.SystemClock.uptimeMillis() < spaceFlashUntil
+            if (flash) {
+                val left = (spaceFlashUntil - android.os.SystemClock.uptimeMillis()).toFloat() / SPACE_FLASH_MS
+                text.color = KbTheme.mix(t.fg, t.acc, (left * 1.6f).coerceAtMost(1f))
+                postInvalidateOnAnimation()
+            }
             if (k.label.isEmpty() && drawKeyIcon(c, k, rect, text.color)) {
                 drawHint(c, k, rect, t)
                 continue
@@ -303,7 +316,7 @@ class KeyboardView(context: Context) : View(context) {
             val bold = k.type != null || boldLabels
             text.typeface = if (bold) fontBold else fontNormal
             text.textSize = spPx(labelSp) * when {
-                k.type == "space" -> 0.6f
+                k.type == "space" -> if (flash) 0.78f else 0.6f
                 cps > 2 -> 0.62f
                 k.type != null -> 0.85f
                 else -> 1f
@@ -924,6 +937,7 @@ class KeyboardView(context: Context) : View(context) {
     }
 
     companion object {
+        private const val SPACE_FLASH_MS = 1100L
         private const val ANIM_MS = 220L
         private const val TRAIL_MS = 240L
     }

@@ -16,6 +16,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // ONNX Runtime ships native code per CPU type; every phone MyKey targets is 64-bit ARM.
+        ndk { abiFilters += "arm64-v8a" }
     }
     // Release signing key lives outside the repo (~/.android/mykey-release.properties); never commit it.
     val releaseProps = Properties().apply {
@@ -36,6 +38,8 @@ android {
             signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
+    // Compress ONNX Runtime's native library in the APK (34 MB stored, about 12 MB compressed).
+    packaging { jniLibs { useLegacyPackaging = true } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -49,6 +53,8 @@ kotlin {
 dependencies {
     // Styles the password/address suggestions that autofill services show inside the keyboard.
     implementation("androidx.autofill:autofill:1.1.0")
+    // Runs the on-device Zenith language model (assets/zenith/zenith_kb.onnx).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

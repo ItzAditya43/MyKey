@@ -205,7 +205,7 @@ class DeviceTest {
                 ClipPanel(ctx, t, user, true, {}, {}),
                 EditPanel(ctx, t, {}, {}),
                 SnippetPanel(ctx, t, {}, {}),
-                LangPanel(ctx, t, "en", {}, {}, {}, {}),
+                LangPanel(ctx, t, "en", {}, { _, _ -> }, {}, {}, {}),
             )
             panels.forEach { draw(it) }
             assertTrue(EmojiPanel.data(ctx).values.sumOf { it.size } > 1500)
@@ -217,7 +217,7 @@ class DeviceTest {
     // ---------- settings: open every page ----------
 
     @Test fun everySettingsPageOpens() {
-        val pages = listOf("theme", "size", "keys", "feel", "profiles", "theme_editor", "languages", "typing", "correction", "tools", "toolbar", "longpress",
+        val pages = listOf("theme", "size", "keys", "feel", "profiles", "theme_editor", "languages", "typing", "correction", "zenith", "tools", "toolbar", "longpress",
             "learning", "shortcuts", "layouts", "stats", "backup", "privacy", "apptheme:com.whatsapp")
         ActivityScenario.launch(SettingsActivity::class.java).use { sc ->
             sc.onActivity { a ->
@@ -234,7 +234,7 @@ class DeviceTest {
         val snapshot = HashMap(p.all)
         val skip = listOf("delete", "reset", "clear", "remove", "export", "restore", "turn on", "switch keyboard", "choose", "add gifs",
             "open", "save as", "use pasted", "copy current", "forget", "allow again", "change photo", "add a word", "save snippet", "add shortcut")
-        val pages = listOf("theme", "size", "keys", "feel", "profiles", "theme_editor", "languages", "typing", "correction", "tools", "toolbar", "longpress",
+        val pages = listOf("theme", "size", "keys", "feel", "profiles", "theme_editor", "languages", "typing", "correction", "zenith", "tools", "toolbar", "longpress",
             "learning", "shortcuts", "layouts", "stats", "backup", "privacy", "apptheme:com.whatsapp", "home")
         val failures = ArrayList<String>()
         try {

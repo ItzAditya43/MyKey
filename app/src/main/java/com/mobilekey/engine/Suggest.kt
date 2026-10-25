@@ -2,8 +2,11 @@ package com.mobilekey.engine
 
 import kotlin.math.ln
 
-/** [list] is in display priority: index 0 is the main (middle) suggestion. */
-class Suggestions(val list: List<String>, val auto: String?)
+/**
+ * [list] is in display priority: index 0 is the main (middle) suggestion.
+ * [pool] is every candidate worth scoring with Zenith (spelled as it would be inserted).
+ */
+class Suggestions(val list: List<String>, val auto: String?, val pool: List<String> = emptyList())
 
 object Suggest {
     /** Words never offered as suggestions or corrections (set by the keyboard when the filter is on). */
@@ -32,6 +35,7 @@ object Suggest {
         near: (Char, Char) -> Boolean,
         autocorrect: Boolean,
         aggressive: Boolean,
+        lm: Map<String, Float>? = null,
     ): Suggestions {
         val lower = typed.lowercase()
         val dictScore = dicts.maxOfOrNull { it.score(lower) ?: -1f } ?: -1f
@@ -79,11 +83,30 @@ object Suggest {
             }
         }
 
-        val ranked = scores.entries.sortedByDescending { it.value }.map { it.key }
+        var ranked = scores.entries.sortedByDescending { it.value }.map { it.key }
+        val pool = (listOfNotNull(lower.takeIf { known }) + ranked.take(POOL)).distinctBy { it.lowercase() }
+        var vetoFix = false
+        if (lm != null) {
+            // Zenith, normalised over the candidates (log-softmax), plus the dictionary/habit score.
+            val zs = pool.mapNotNull { w -> lm[w.lowercase()]?.let { w to it } }
+            if (zs.isNotEmpty()) {
+                val mx = zs.maxOf { it.second }
+                val norm = mx + ln(zs.sumOf { kotlin.math.exp((it.second - mx).toDouble()) }).toFloat()
+                val z = zs.associate { it.first.lowercase() to it.second - norm }
+                val floor = z.values.min() - 2f
+                val mixed = HashMap<String, Float>()
+                for ((w, base) in scores) mixed[w] = if (base >= 50f) base else LM_WEIGHT * (z[w.lowercase()] ?: floor) + BASE_WEIGHT * base
+                ranked = mixed.entries.sortedByDescending { it.value }.map { it.key }
+                // "Happy bir": don't force the typo fix "bird" when a completion fits the sentence far better.
+                val fix = ranked.firstOrNull { it in corrections }
+                val comp = ranked.firstOrNull { it !in corrections }
+                if (!known && fix != null && comp != null && (mixed[comp] ?: 0f) - (mixed[fix] ?: 0f) >= VETO) vetoFix = true
+            }
+        }
         val auto = when {
             !autocorrect -> null
             FIX[lang]?.containsKey(lower) == true && !userKnown -> FIX[lang]?.get(lower)
-            !known -> ranked.firstOrNull { it in corrections }
+            !known -> if (vetoFix) null else ranked.firstOrNull { it in corrections }
             closeCommon.isNotEmpty() -> ranked.firstOrNull { it in closeCommon }
             else -> null
         }
@@ -94,11 +117,24 @@ object Suggest {
             if (auto != null) add(typed)
             addAll(rest)
         }.distinctBy { it.lowercase() }.take(3).map { matchCase(typed, it) }
-        return Suggestions(list, auto?.let { matchCase(typed, it) })
+        return Suggestions(list, auto?.let { matchCase(typed, it) }, pool.map { matchCase(typed, it) })
     }
 
     /** How much one typo outweighs word frequency: the closest fix wins unless another is far more common. */
     private const val CLOSENESS = 6f
+
+    /** How many top candidates Zenith re-scores per keystroke (multi-token words cost a model run each). */
+    private const val POOL = 8
+    /** final = LM_WEIGHT · zenith (normalised over candidates) + BASE_WEIGHT · (frequency, typo distance, your habits). */
+    private const val LM_WEIGHT = 1f
+    private const val BASE_WEIGHT = 0.5f
+    /** A completion this far ahead of the best typo fix (mixed score) blocks the fix. */
+    private const val VETO = 2f
+    /** Words one small typo away from [w] (for real-word fixes like "by" → "buy"), most common first. */
+    fun neighbours(w: String, d: Dictionary, near: (Char, Char) -> Boolean, n: Int = 8): List<String> =
+        // Same length or one letter more: dropping a letter ("its" → "it") makes plausible-looking but wrong fixes.
+        d.corrections(w, 1f, near).map { it.first }.filter { it != w && it !in offensive && it.length >= w.length }
+            .sortedByDescending { d.score(it) ?: 0f }.take(n)
 
     /** ln(count) below this means "rare in the word list" (about 1,000 uses). */
     private const val RARE = 6.9f

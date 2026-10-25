@@ -646,46 +646,78 @@ class LangPanel(
     ctx: Context, t: KbTheme,
     private val current: String,
     private val onPick: (String) -> Unit,
+    private val onLayout: (String, String) -> Unit,
     private val onRemove: (String) -> Unit,
     private val onSettings: () -> Unit,
     private val onBack: () -> Unit,
 ) : Panel(ctx, t) {
+    private val prefs = Prefs.get(ctx)
+
     init {
-        val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(6f), px(4f), px(6f), px(4f)) }
-        head.addView(label("Languages", 15f, true).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(px(10f), 0, 0, 0) }, LayoutParams(0, -1, 1f))
-        head.addView(textButton("All settings", onSettings), LayoutParams(-2, px(34f)))
-        addView(head, LayoutParams(-1, px(42f)))
-        val enabled = Langs.enabled(Prefs.get(ctx))
-        val sub = mapOf("en" to "English", "es" to "Spanish", "ru" to "Russian", "ja" to "Japanese", "zh" to "Mandarin")
-        val grid = LinearLayout(ctx).apply { orientation = VERTICAL; setPadding(px(6f), 0, px(6f), px(6f)) }
-        Langs.supported.chunked(2).forEach { pair ->
-            val row = LinearLayout(ctx).apply { orientation = HORIZONTAL }
-            pair.forEach { l ->
-                val on = l in enabled
-                val isCur = l == current
-                val card = LinearLayout(ctx).apply {
-                    orientation = VERTICAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(px(16f), px(10f), px(12f), px(10f))
-                    background = surface(if (isCur) KbTheme.mix(t.bg, t.acc, 0.35f) else if (on) keyColor() else modColor(), 14f)
-                    alpha = if (on || isCur) 1f else 0.6f
-                    setOnClickListener { onPick(l) }
-                    setOnLongClickListener { onRemove(l); true }
-                    contentDescription = sub[l]
-                }
-                card.addView(TextView(ctx).apply { text = Langs.names[l]; textSize = 17f; setTextColor(t.fg); typeface = Typeface.DEFAULT_BOLD })
-                card.addView(TextView(ctx).apply {
-                    text = when { isCur -> "In use"; on -> "${sub[l]} · tap to switch"; else -> "${sub[l]} · tap to add" }
-                    textSize = 12.5f; setTextColor(t.fg); alpha = 0.7f
-                })
-                row.addView(card, LayoutParams(0, -1, 1f).apply { setMargins(px(4f), px(4f), px(4f), px(4f)) })
-            }
-            if (pair.size == 1) row.addView(View(ctx), LayoutParams(0, -1, 1f).apply { setMargins(px(4f), px(4f), px(4f), px(4f)) })
-            grid.addView(row, LayoutParams(-1, 0, 1f))
+        val enabled = Langs.enabled(prefs)
+        val missing = Langs.supported.filter { it !in enabled }
+
+        // Top (furthest from the thumb): the rare action, adding a language.
+        val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(px(10f), px(4f), px(6f), 0) }
+        head.addView(label("Languages", 14f, true).apply { gravity = Gravity.CENTER_VERTICAL or Gravity.START }, LayoutParams(-2, -1))
+        val adds = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL or Gravity.END }
+        missing.forEach { l ->
+            adds.addView(textButton("+ ${Langs.names[l]}") { onPick(l) }.apply {
+                textSize = 13f
+                contentDescription = "Add ${Langs.english[l]}"
+            }, LayoutParams(-2, px(32f)).apply { leftMargin = px(5f) })
         }
-        addView(grid, LayoutParams(-1, 0, 1f))
-        addView(label("Long-press a language to remove it", 12f).apply { alpha = 0.55f }, LayoutParams(-1, px(20f)))
-        addView(bottomBar(onBack), LayoutParams(-1, px(52f)))
+        head.addView(android.widget.HorizontalScrollView(ctx).apply {
+            isHorizontalScrollBarEnabled = false
+            isFillViewport = true
+            addView(adds, LayoutParams(-1, -1))
+        }, LayoutParams(0, -1, 1f).apply { leftMargin = px(8f) })
+        addView(head, LayoutParams(-1, px(40f)))
+
+        // Your languages, stacked down to the thumb. Tap to switch, tap the layout to change it.
+        val col = LinearLayout(ctx).apply { orientation = VERTICAL; gravity = Gravity.BOTTOM; setPadding(px(6f), px(2f), px(6f), 0) }
+        enabled.forEach { l -> col.addView(row(l, enabled.size > 1), LayoutParams(-1, px(50f)).apply { setMargins(0, px(3f), 0, px(3f)) }) }
+        val scroll = ScrollView(ctx).apply { isVerticalScrollBarEnabled = false; isFillViewport = true; addView(col) }
+        addView(scroll, LayoutParams(-1, 0, 1f))
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        addView(label(if (enabled.size > 1) "Hold a language to remove it · swipe up on space to switch" else "Swipe up on space to switch, once you add another", 11.5f).apply { alpha = 0.5f }, LayoutParams(-1, px(20f)))
+        addView(bottomBar(onBack, listOf(textButton("Language settings", onSettings) to 5f)), LayoutParams(-1, px(52f)))
+    }
+
+    private fun row(l: String, removable: Boolean): View {
+        val isCur = l == current
+        val r = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(8f), 0, px(8f), 0)
+            background = surface(if (isCur) KbTheme.mix(t.bg, t.acc, 0.32f) else keyColor(), 14f)
+            setOnClickListener { onPick(l) }
+            if (removable) setOnLongClickListener { onRemove(l); true }
+            contentDescription = "${Langs.english[l]}${if (isCur) ", in use" else ""}"
+        }
+        r.addView(label(Langs.tiles[l] ?: l, 14f, true).apply {
+            background = surface(if (isCur) t.acc else modColor(), 10f)
+            setTextColor(if (isCur) KbTheme.mix(t.acc, 0xFF000000.toInt(), 0.75f) else t.fg)
+        }, LayoutParams(px(36f), px(36f)))
+        val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(px(12f), 0, px(8f), 0) }
+        texts.addView(TextView(context).apply { text = Langs.names[l]; textSize = 16f; setTextColor(t.fg); typeface = Typeface.DEFAULT_BOLD })
+        texts.addView(TextView(context).apply {
+            val en = Langs.english[l].takeIf { it != Langs.names[l] }
+            text = listOfNotNull(en, if (isCur) "in use" else null).joinToString(" · ").replaceFirstChar { it.titlecase() }
+            textSize = 12f; setTextColor(t.fg); alpha = 0.65f
+        })
+        r.addView(texts, LayoutParams(0, -2, 1f))
+        val opts = Langs.layoutOptions(l)
+        if (opts.isNotEmpty()) {
+            // The layout chip cycles through this language's layouts and switches to it.
+            r.addView(textButton("${Langs.layoutName(l, prefs)}  ▾") {
+                val i = opts.indexOfFirst { it.first == Langs.layoutChoice(l, prefs) }
+                onLayout(l, opts[(i + 1) % opts.size].first)
+            }.apply { textSize = 12.5f; contentDescription = "Layout: ${Langs.layoutName(l, prefs)}. Tap to change." }, LayoutParams(-2, px(34f)))
+        } else {
+            r.addView(TextView(context).apply { text = Langs.layoutName(l, prefs); textSize = 12.5f; setTextColor(t.fg); alpha = 0.55f; setPadding(px(8f), 0, px(8f), 0) })
+        }
+        return r
     }
 }
 

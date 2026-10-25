@@ -34,7 +34,13 @@ Every feature has its own switch in Settings.
 
 - **Languages**: English (QWERTY, QWERTZ, AZERTY, Dvorak, Colemak), Spanish, Russian, Japanese
   (12-key flick or romaji, kana → kanji with Mozc data), Mandarin (pinyin → hanzi with AOSP PinyinIME
-  data). Switch with the globe key or swipe up on space
+  data). Switch by swiping up on space (the name lights up on the space bar) or from the Languages
+  panel in the toolbar, where you can also change a language's layout and add new ones
+- **Smart predictions (Zenith)**: a 17.8M-parameter language model running fully on the phone
+  (ONNX Runtime, about 8 ms per step). It re-ranks English and Spanish suggestions by sentence
+  context, predicts the next word, fixes real-word mistakes once the following words are typed
+  ("want to by a car" → "buy"), ranks Japanese kanji choices (家に → 帰る, 池の → 蛙) and suggests
+  next phrases. It uses about 80 MB while loaded and unloads after 5 minutes hidden
 - **Typing**: glide typing with a trail, key preview, long-press popups, space-bar cursor, swipe-delete,
   accelerating backspace, split layout (auto in landscape), field-aware layouts, action enter key,
   swipe gestures, keys that learn your aim, adjustable long-press/glide/backspace timing, space-bar trackpad,
@@ -103,5 +109,7 @@ stretch to the full width; rows of only letters are centred.
 
 - Japanese: [Mozc](https://github.com/google/mozc) OSS dictionary (BSD-3, IPAdic licence), trimmed to the most common 260k entries
 - Mandarin: AOSP PinyinIME `rawdict_utf16_65105_freq.txt` (Apache 2.0)
+- Zenith model and tokenizer: `assets/zenith/` (from the Zenith project's `export/`). Tests check the
+  Kotlin tokenizer against Hugging Face on 3,017 lines, and the phone's top-5 against the PC
 - Emoji: Unicode `emoji-test.txt`
 - Fonts: Bricolage Grotesque and Figtree (SIL Open Font License)

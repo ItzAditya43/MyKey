@@ -51,6 +51,14 @@ object Features {
         Feature("incognito", "Learning", "Incognito mode", "Nothing is learned while this is on.", true, default = false),
         Feature("stats", "Learning", "Typing stats", "Counts words, fixes and speed. On this phone only.", true),
 
+        Feature("zenith", "Zenith", "Smart predictions (Zenith)", "An AI model on this phone ranks suggestions by what you're writing. Nothing leaves the phone.", true),
+        Feature("zenith_en", "Zenith", "English", "", true),
+        Feature("zenith_es", "Zenith", "Spanish", "", true),
+        Feature("zenith_ja", "Zenith", "Japanese", "Kanji choices that fit the sentence, and next-phrase ideas.", true),
+        Feature("zenith_next", "Zenith", "Predict the next word", "After a space, suggests what fits the sentence so far.", true),
+        Feature("zenith_context_fix", "Zenith", "Fix real-word mistakes", "“I want to by a car” → buy. Only when the model is very sure.", true),
+        Feature("zenith_unload", "Zenith", "Free memory when hidden", "Unloads the model (about 80 MB) after 5 minutes without the keyboard.", true),
+
         Feature("autocorrect", "Correction", "Autocorrect", "Fixes typos when you press space.", true),
         Feature("ac_aggressive", "Correction", "Aggressive autocorrect", "Fixes bigger typos, but guesses wrong more often.", true, default = false),
         Feature("proximity", "Correction", "Key-proximity correction", "Neighbouring-key mistakes count as small typos.", true),
@@ -120,6 +128,46 @@ object Langs {
 
     fun enabled(p: SharedPreferences): List<String> =
         (p.getString("langs", "en") ?: "en").split(',').filter { it in supported }.ifEmpty { listOf("en") }
+
+    /** English names and short tile labels, for the language lists. */
+    val english = mapOf("en" to "English", "es" to "Spanish", "ru" to "Russian", "ja" to "Japanese", "zh" to "Mandarin")
+    val tiles = mapOf("en" to "EN", "es" to "ES", "ru" to "RU", "ja" to "あ", "zh" to "中")
+    /** What typing in the language looks like, one line. */
+    val about = mapOf(
+        "en" to "Word suggestions, autocorrect, glide",
+        "es" to "ñ key, accents on long-press, autocorrect",
+        "ru" to "ЙЦУКЕН, word suggestions",
+        "ja" to "Kana to kanji conversion",
+        "zh" to "Pinyin to characters",
+    )
+
+    /** Layout choices a language has (empty when there is only one). */
+    fun layoutOptions(lang: String): List<Pair<String, String>> = when (lang) {
+        "en" -> englishLayouts
+        "ja" -> listOf("flick" to "Flick", "romaji" to "Romaji")
+        else -> emptyList()
+    }
+
+    fun layoutChoice(lang: String, p: SharedPreferences): String = when (lang) {
+        "en" -> p.getString("en_layout", "en_qwerty") ?: "en_qwerty"
+        "ja" -> p.getString("ja_mode", "flick") ?: "flick"
+        else -> ""
+    }
+
+    fun layoutName(lang: String, p: SharedPreferences): String = when (lang) {
+        "en", "ja" -> layoutOptions(lang).firstOrNull { it.first == layoutChoice(lang, p) }?.second ?: ""
+        "es" -> "QWERTY + ñ"
+        "ru" -> "ЙЦУКЕН"
+        "zh" -> "Pinyin"
+        else -> ""
+    }
+
+    fun setLayout(lang: String, id: String, p: SharedPreferences) {
+        when (lang) {
+            "en" -> p.edit().putString("en_layout", id).apply()
+            "ja" -> p.edit().putString("ja_mode", id).apply()
+        }
+    }
 
     fun layoutFor(lang: String, p: SharedPreferences): String = when (lang) {
         "en" -> p.getString("en_layout", "en_qwerty") ?: "en_qwerty"

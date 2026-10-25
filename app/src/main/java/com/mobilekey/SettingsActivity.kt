@@ -159,6 +159,7 @@ class SettingsActivity : Activity() {
         "languages" -> languages()
         "typing" -> typing()
         "correction" -> featurePage("Autocorrect", "Fixes, capitals and punctuation.", "Correction")
+        "zenith" -> zenithPage()
         "tools" -> tools()
         "toolbar" -> toolbarPage()
         "longpress" -> longPressPage()
@@ -271,6 +272,7 @@ class SettingsActivity : Activity() {
                 Link("globe", c("#3D8BFF"), "Languages", langs, "languages", "english spanish russian japanese mandarin chinese layout qwerty switch"),
                 Link("keyboard", c("#8E6CFF"), "Typing", "${typing.count { f(it.id) }} of ${typing.size} on", "typing", "glide swipe gesture trackpad timing long-press backspace split"),
                 Link("check", c("#22B573"), "Autocorrect", if (f("autocorrect")) "On" else "Off", "correction", "spelling capital punctuation emoji calculator units date"),
+                Link("sparkle", c("#FF5577"), "Smart predictions", if (f("zenith")) "Zenith on" else "Off", "zenith", "zenith ai model next word context kanji prediction"),
                 Link("hold", c("#FF9F1C"), "Hold keys", "What each key gives on long-press", "longpress", "long press popup symbols accents hint"),
                 Link("snippet", c("#E8A500"), "Shortcuts & snippets", "${user.allShortcuts().size} shortcuts", "shortcuts", "text expansion"),
             ),
@@ -290,7 +292,7 @@ class SettingsActivity : Activity() {
     }
 
     private val pageOf = mapOf("Typing" to "typing", "Correction" to "correction", "Learning" to "learning", "Look" to "keys",
-        "Tools" to "tools", "Privacy" to "privacy", "Languages" to "languages")
+        "Tools" to "tools", "Privacy" to "privacy", "Languages" to "languages", "Zenith" to "zenith")
     private val featurePage = mapOf("number_row" to "size", "hints" to "keys", "key_preview" to "keys", "key_shadow" to "keys",
         "bold_labels" to "keys", "haptics" to "feel", "sounds" to "feel", "sounds_silent" to "feel", "auto_theme" to "theme",
         "per_app_theme" to "profiles", "custom_layouts" to "layouts", "tool_theme" to "toolbar", "tool_resize" to "toolbar", "quick_toolbar" to "toolbar")
@@ -829,32 +831,105 @@ class SettingsActivity : Activity() {
 
     private fun languages(): View {
         val pv = Preview(previewLang())
-        val sub = mapOf(
-            "en" to "English", "es" to "Spanish · ñ key and accents", "ru" to "Russian · ЙЦУКЕН",
-            "ja" to "Japanese · flick or romaji, kana to kanji", "zh" to "Mandarin · pinyin to characters",
-        )
-        return page("Languages", "Switch: swipe up on the space bar, or Languages in the toolbar.", pv.box) {
-            section("Your languages") {
-                Langs.supported.forEach { l ->
-                    divided(k.toggleRow(Langs.names[l] ?: l, sub[l] ?: "", l in Langs.enabled(prefs)) { on ->
-                        val list = Langs.enabled(prefs).toMutableList()
-                        if (on) { if (l !in list) list.add(l) } else list.remove(l)
-                        if (list.isEmpty()) { reload(); return@toggleRow }
-                        prefs.edit().putString("langs", list.joinToString(",")).apply()
-                        pv.lang = if (on) l else list[0]
-                        pv.refresh()
+        return page("Languages", "Swipe up on the space bar to go to the next one.", pv.box) {
+            val enabled = Langs.enabled(prefs).toMutableList()
+            fun save() {
+                prefs.edit().putString("langs", enabled.joinToString(",")).apply()
+                if (prefs.getString("lang", null) !in enabled) prefs.edit().putString("lang", enabled[0]).apply()
+            }
+            fun tile(l: String, on: Boolean) = k.text(Langs.tiles[l] ?: l, 15f, if (on) p.accentFg else p.fg, 700).apply {
+                gravity = Gravity.CENTER
+                background = k.rounded(if (on) p.accent else p.surface2, 12f)
+            }
+
+            addView(k.eyebrow("Your languages"))
+            addView(k.text(if (enabled.size > 1) "Drag ≡ to set the switching order. Tap one to try it above." else "Add a second language below to switch between them.", 13.5f, p.muted).apply {
+                setPadding(k.dp(18), 0, k.dp(18), k.dp(10))
+            })
+            val list = k.column().apply { background = k.rounded(p.surface, 20f); setPadding(k.dp(10), k.dp(6), k.dp(6), k.dp(6)) }
+            val drag = com.mobilekey.ui.DragReorder(list) { from, to -> enabled.add(to, enabled.removeAt(from)); save() }
+            val current = previewLang()
+            enabled.forEach { l ->
+                val item = k.column().apply { background = k.rounded(p.surface, 14f); setPadding(0, k.dp(8), 0, k.dp(8)) }
+                val r = k.row()
+                r.addView(tile(l, l == current), LinearLayout.LayoutParams(k.dp(40), k.dp(40)))
+                val texts = k.column().apply { setPadding(k.dp(12), 0, k.dp(6), 0) }
+                texts.addView(k.row().apply {
+                    addView(k.text(Langs.names[l] ?: l, 16f, p.fg, 620))
+                    if (l == current) addView(k.badge("Current", p.accent), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = k.dp(8) })
+                })
+                texts.addView(k.text("${Langs.english[l]} · ${Langs.layoutName(l, prefs)}", 13f, p.muted))
+                r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+                r.setOnClickListener {
+                    prefs.edit().putString("lang", l).apply()
+                    pv.lang = l; pv.refresh(); reload()
+                }
+                if (enabled.size > 1) r.addView(com.mobilekey.ui.IconView(this@SettingsActivity, "close", p.muted).apply {
+                    contentDescription = "Remove ${Langs.english[l]}"
+                    background = k.ripple(p.surface2, 99f)
+                    setOnClickListener { enabled.remove(l); save(); pv.lang = previewLang(); pv.refresh(); reload() }
+                }, LinearLayout.LayoutParams(k.dp(36), k.dp(36)))
+                val handle = com.mobilekey.ui.IconView(this@SettingsActivity, "drag", p.muted).apply { contentDescription = "Drag to reorder ${Langs.english[l]}" }
+                if (enabled.size > 1) r.addView(handle, LinearLayout.LayoutParams(k.dp(44), k.dp(44)).apply { leftMargin = k.dp(4) })
+                item.addView(r)
+                // Layout choice right under the language it belongs to.
+                val opts = Langs.layoutOptions(l)
+                if (opts.isNotEmpty()) {
+                    val chips = ArrayList<TextView>()
+                    opts.forEach { (id, name) ->
+                        chips.add(k.chip(name, id == Langs.layoutChoice(l, prefs)) {
+                            Langs.setLayout(l, id, prefs)
+                            chips.forEachIndexed { i, c ->
+                                val sel = opts[i].first == id
+                                c.setTextColor(if (sel) p.accentFg else p.fg)
+                                c.background = k.ripple(if (sel) p.accent else p.surface2, 99f)
+                            }
+                            prefs.edit().putString("lang", l).apply()
+                            pv.lang = l; pv.refresh()
+                        })
+                    }
+                    item.addView(k.chipRow(chips).apply { setPadding(k.dp(52), k.dp(10), 0, k.dp(2)) })
+                }
+                list.addView(item, LinearLayout.LayoutParams(-1, -2))
+                if (enabled.size > 1) drag.attach(handle, item, immediate = true)
+            }
+            addView(list, k.lp())
+
+            val missing = Langs.supported.filter { it !in enabled }
+            if (missing.isNotEmpty()) {
+                addView(k.eyebrow("Add a language"))
+                val card = k.card()
+                missing.forEach { l ->
+                    val r = k.row().apply { setPadding(0, k.dp(10), 0, k.dp(10)) }
+                    r.addView(tile(l, false), LinearLayout.LayoutParams(k.dp(40), k.dp(40)))
+                    val texts = k.column().apply { setPadding(k.dp(12), 0, k.dp(8), 0) }
+                    texts.addView(k.text("${Langs.names[l]}  ·  ${Langs.english[l]}", 15.5f, p.fg, 580))
+                    texts.addView(k.text(Langs.about[l] ?: "", 13f, p.muted))
+                    r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+                    r.addView(k.button("Add", "secondary") {
+                        enabled.add(l); save()
+                        prefs.edit().putString("lang", l).apply()
+                        pv.lang = l; pv.refresh(); reload()
+                    }.apply { setPadding(k.dp(16), k.dp(9), k.dp(16), k.dp(9)) })
+                    k.addDivided(card, r)
+                }
+                addView(card, k.lp())
+            }
+
+            section("How to switch") {
+                listOf(
+                    "Swipe up on the space bar" to "Goes to the next language in your order. Its name lights up on the space bar.",
+                    "Languages button in the toolbar" to "Pick one directly, change its layout or add another.",
+                    "Long-press space" to "Also switches, when that option is on below (instead of the trackpad).",
+                ).forEach { (a, b) ->
+                    divided(k.column().apply {
+                        setPadding(0, k.dp(12), 0, k.dp(12))
+                        addView(k.text(a, 15.5f, p.fg, 560))
+                        addView(k.text(b, 13f, p.muted))
                     })
                 }
             }
-            choice("English layout", Langs.englishLayouts, prefs.getString("en_layout", "en_qwerty")!!) {
-                prefs.edit().putString("en_layout", it).apply()
-                pv.lang = "en"; pv.refresh()
-            }
-            choice("Japanese input", listOf("flick" to "Flick (12-key)", "romaji" to "Romaji (QWERTY)"), prefs.getString("ja_mode", "flick")!!) {
-                prefs.edit().putString("ja_mode", it).apply()
-                if ("ja" in Langs.enabled(prefs)) { pv.lang = "ja"; pv.refresh() }
-            }
-            section("Switching") { toggles("multilingual", "lang_space_long") }
+            section("Options") { toggles("multilingual", "lang_space_long") }
         }
     }
 
@@ -868,6 +943,43 @@ class SettingsActivity : Activity() {
                 }
             }
         }
+
+    private fun zenithPage(): View = page("Smart predictions", "Zenith, an AI model that runs on this phone.") {
+        val z = com.mobilekey.engine.Zenith
+        val m = z.model
+        val lat = z.latency()
+        val status = when {
+            !f("zenith") -> "Off. Suggestions come from the word lists and your habits only."
+            z.failed != null -> "Couldn't load the model: ${z.failed}"
+            m == null -> "Loads when you start typing (under a second)."
+            lat == null -> "Ready. Loaded in ${m.loadMs} ms."
+            else -> "Ready. Loaded in ${m.loadMs} ms · %.0f ms per prediction (slowest 5%%: %.0f ms).".format(lat.first, lat.second)
+        }
+        addView(k.card().apply {
+            k.addDivided(this, k.toggleRow(Features.all.first { it.id == "zenith" }.title, Features.all.first { it.id == "zenith" }.desc, f("zenith")) { setF("zenith", it); reload() })
+            addView(k.text(status, 13.5f, p.muted).apply { setPadding(0, k.dp(4), 0, k.dp(14)) })
+        }, k.lp(top = 6))
+        if (!f("zenith")) return@page
+        section("Languages") {
+            listOf("zenith_en", "zenith_es", "zenith_ja").forEach { id ->
+                val ft = Features.all.first { it.id == id }
+                divided(k.toggleRow(ft.title, ft.desc, f(id)) { setF(id, it) })
+            }
+        }
+        section("What it does") {
+            listOf("zenith_next", "zenith_context_fix").forEach { id ->
+                val ft = Features.all.first { it.id == id }
+                divided(k.toggleRow(ft.title, ft.desc, f(id)) { setF(id, it) })
+            }
+        }
+        section("Memory") {
+            val ft = Features.all.first { it.id == "zenith_unload" }
+            divided(k.toggleRow(ft.title, ft.desc, f(ft.id)) { setF(ft.id, it) })
+        }
+        addView(k.text("Words you type first show from the word lists, then Zenith re-orders them a moment later. Russian and Mandarin aren't covered by this model yet.", 13f, p.muted).apply {
+            setPadding(k.dp(4), k.dp(18), k.dp(4), 0)
+        })
+    }
 
     private fun typing(): View {
         val pv = Preview(previewLang())

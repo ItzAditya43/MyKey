@@ -26,6 +26,7 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import com.mobilekey.engine.Candidate
 import com.mobilekey.engine.Converter
+import com.mobilekey.engine.Zenith
 import com.mobilekey.engine.Dictionary
 import com.mobilekey.engine.Glide
 import com.mobilekey.engine.Helpers
@@ -95,6 +96,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     private var lastClip: String? = null
     private var lastClipAt = 0L
     private var emojiSuggestions: List<String> = emptyList()
+    /** Zenith's scores for the word being typed, keyed by "lang|text before|typed". */
+    private var zenScores: Pair<String, Map<String, Float>>? = null
+    private val zenRelease = Runnable { Zenith.release() }
     /** Emoji search and GIF search share the query line in the bar. */
     private var gifSearch = false
     private var gifQuery = ""
@@ -380,6 +384,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
                 InputType.TYPE_CLASS_NUMBER, InputType.TYPE_CLASS_PHONE, InputType.TYPE_CLASS_DATETIME,
             )) Mode.NUMPAD else Mode.LETTERS
         if (f("clip_autoclear")) user.clearClips(3_600_000)
+        main.removeCallbacks(zenRelease)
+        if (suggestOn && langs.any { zenOn(it) }) Zenith.ensure(this)
 
         composing.clear(); reading.clear(); romaji = ""; cjkCands = emptyList()
         prevWord = null; lastCorrection = null; lastGlide = null; autoSpace = false; lastDeleted = null
@@ -394,6 +400,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        Zenith.cancel()
         commitComposing()
         if (emailField2 && f("email_chips")) rememberEmail()
         inlineViews = emptyList()
@@ -401,6 +408,13 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         kv?.let { if (it.aimChanges > 0) saveAim(it) }
         stats.flush()
         super.onFinishInputView(finishingInput)
+    }
+
+    override fun onWindowHidden() {
+        super.onWindowHidden()
+        // Give the model's memory back if the keyboard stays hidden for a while.
+        main.removeCallbacks(zenRelease)
+        if (f("zenith_unload")) main.postDelayed(zenRelease, 5 * 60_000L)
     }
 
     override fun onUpdateSelection(
@@ -530,7 +544,8 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             "gifresults" -> GifResultsPanel(this, t, gifQuery, onRemote = ::sendRemoteGif,
                 onBack = { showPanel("gif") }, onSearchAgain = ::startGifSearch)
             "lang" -> LangPanel(this, t, lang, onPick = ::switchTo, onRemove = ::removeLang,
-                onSettings = { onSpecial("settings") }, onBack = { showPanel("keys") })
+                onLayout = { l, id -> Langs.setLayout(l, id, prefs); switchTo(l, stay = true) },
+                onSettings = { openSettings("languages") }, onBack = { showPanel("keys") })
             "snippets" -> SnippetPanel(this, t, onInsert = { ownEdit(); commitComposing(); currentInputConnection?.commitText(it, 1) }, onBack = { showPanel("keys") })
             "clip" -> {
                 if (f("clip_autoclear")) user.clearClips(3_600_000)
@@ -598,6 +613,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             isCjk && (reading.isNotEmpty() || romaji.isNotEmpty()) -> {
                 updateCjkCandidates()
                 b.candidates(cjkCands.map { it.text })
+                zenithKanji()
             }
             else -> updateSuggestions()
         }
@@ -787,8 +803,42 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         if (sepOut.isNotEmpty()) ic.commitText(sepOut, 1)
         if (sepOut.endsWith(" ")) lastSpaceAt = SystemClock.uptimeMillis()
         if (sep.any { it in ".!?\n" }) prevWord = null
+        if (typed.isNotEmpty() && sepOut.endsWith(" ")) zenithLookBack()
         updateShift()
         refreshBar()
+    }
+
+    /**
+     * Once two words follow a correctly spelled word, ask Zenith whether a near spelling fits much
+     * better ("want to by a car" → "buy") and fix it in place. Each word is checked once.
+     */
+    private fun zenithLookBack() {
+        if (!zenOn(lang) || !f("zenith_context_fix") || !f("autocorrect") || appNoAutocorrect || Zenith.model == null) return
+        val d = dicts[lang] ?: return
+        val text = textBefore("", 200)
+        val m = LOOKBACK.find(text) ?: return
+        val (word, right1, right2) = m.destructured
+        val lower = word.lowercase()
+        // Skip names and acronyms (capitals past the first letter) and contractions (the fix list handles those).
+        if (word.length < 2 || '\'' in word || !d.contains(lower) || word.drop(1).any { it.isUpperCase() }) return
+        val cands = Suggest.neighbours(lower, d, if (f("proximity")) near else noNear).map { Suggest.matchCase(word, it) }
+        if (cands.isEmpty()) return
+        val at = m.groups[1]!!.range.first
+        val left = text.substring(0, at)
+        val right = "$right1 $right2"
+        val tail = text.substring(at)
+        val l = lang
+        Zenith.request({ zm, alive -> Zenith.fixInContext(zm, l, left, word, right, cands, LOOKBACK_MARGIN, alive) }) { fix ->
+            val ic = currentInputConnection ?: return@request
+            if (composing.isNotEmpty() || lang != l || textBefore("", 200) != text) return@request
+            ownEdit()
+            ic.beginBatchEdit()
+            ic.deleteSurroundingText(tail.length, 0)
+            ic.commitText(fix + tail.substring(word.length), 1)
+            ic.endBatchEdit()
+            stats.add("corrections"); stats.add("context_fixes")
+            Toast.makeText(this, "“$word” → “$fix”", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun learn(word: String, by: Int = 1) {
@@ -959,11 +1009,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             "lang_panel" -> { commitComposing(); showPanel(if (panel == "lang") "keys" else "lang") }
             "clipboard" -> showPanel("clip")
             "voice" -> startVoice()
-            "settings" -> {
-                commitComposing()
-                requestHideSelf(0)
-                startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
+            "settings" -> openSettings(null)
         }
     }
 
@@ -1060,10 +1106,22 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         loadLayout()
         updateShift()
         refreshBar()
+        flashLanguage()
     }
 
-    /** From the language panel: turn the language on if needed and switch to it. */
-    private fun switchTo(l: String) {
+    /** Shows which language you're now in: the name on the space bar lights up briefly. */
+    private fun flashLanguage() {
+        kv?.flashSpace()
+    }
+
+    private fun openSettings(page: String?) {
+        commitComposing()
+        requestHideSelf(0)
+        startActivity(Intent(this, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).also { if (page != null) it.putExtra("page", page) })
+    }
+
+    /** From the language panel: turn the language on if needed and switch to it ([stay] keeps the panel open). */
+    private fun switchTo(l: String, stay: Boolean = false) {
         ownEdit()
         val list = Langs.enabled(prefs).toMutableList()
         if (l !in list) list.add(l)
@@ -1074,8 +1132,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         prevWord = null
         applySettings()
         loadLayout()
-        showPanel("keys")
+        showPanel(if (stay) "lang" else "keys")
         updateShift()
+        if (!stay) flashLanguage()
     }
 
     private fun removeLang(l: String) {
@@ -1177,17 +1236,111 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
     private fun suggest(typed: String): Suggestions? {
         val ds = activeDicts()
         if (ds.isEmpty()) return null
+        val z = zenScores?.takeIf { zenOn(lang) && it.first == zenKey(typed) }?.second
         return Suggest.run(
             typed, lang, ds, user,
             if (f("proximity")) near else noNear,
             f("autocorrect") && !appNoAutocorrect, f("ac_aggressive"),
+            lm = z,
         )
+    }
+
+    private val KANJI_ORDER_WEIGHT = 0.7f
+    /** "… word right1 right2 " at the end of the text (letters only, so nothing with punctuation in between). */
+    private val LOOKBACK = Regex("""(?:^|\s)(\p{L}[\p{L}']*) (\p{L}[\p{L}']*) (\p{L}[\p{L}']*) $""")
+    /** With words on both sides the model is far surer; e^3 ≈ 20× more likely is enough. */
+    private val LOOKBACK_MARGIN = 3f
+
+    private fun zenOn(l: String) = f("zenith") && f("zenith_$l") && l in Zenith.langs
+
+    /** Text before the word being typed (the composing word is already in the field). */
+    private fun textBefore(typed: String, n: Int = 400): String {
+        val t = currentInputConnection?.getTextBeforeCursor(n + typed.length, 0)?.toString() ?: return ""
+        return if (typed.isNotEmpty() && t.endsWith(typed)) t.dropLast(typed.length) else t
+    }
+
+    private var zenBefore = ""
+    private fun zenKey(typed: String) = "$lang|$zenBefore|$typed"
+
+    /** Re-rank the word being typed with Zenith; the bar updates when the answer arrives (about 30–50 ms). */
+    private fun zenithRerank(typed: String, s: Suggestions?) {
+        if (!zenOn(lang) || Zenith.model == null || s == null || s.pool.isEmpty()) return
+        zenBefore = textBefore(typed)
+        val key = zenKey(typed)
+        if (zenScores?.first == key) return
+        val l = lang
+        val before = zenBefore
+        val pool = s.pool
+        Zenith.request({ m, alive -> Zenith.scoreWords(m, l, before, pool, alive) }) { r ->
+            zenScores = key to r.mapKeys { it.key.lowercase() }
+            if (composing.toString() == typed && lang == l) showWordSuggestions(typed, rerank = false)
+        }
+    }
+
+    /**
+     * Re-ranks the kanji choices for the current reading by how well each fits the text before it.
+     * Your own past choices stay first; Zenith is mixed with the converter's order, not a replacement.
+     */
+    private fun zenithKanji() {
+        if (lang != "ja" || !zenOn("ja") || Zenith.model == null || cjkCands.size < 2) return
+        val shown = reading.toString() + romaji
+        val r = reading.toString() + (if (romaji.isEmpty()) "" else Kana.flush(romaji))
+        val learned = user.convLearned(lang, r).toSet()
+        val cands = cjkCands
+        // Only whole-reading choices compete; partial conversions keep their place.
+        val slots = cands.indices.filter { cands[it].len == r.length && cands[it].text !in learned }.take(12)
+        if (slots.size < 2) return
+        val before = textBefore(shown, 40)
+        val texts = slots.map { cands[it].text }
+        Zenith.request({ m, alive -> Zenith.rankTexts(m, "ja", before, texts, 32, alive) }) { sc ->
+            if (cjkCands !== cands || reading.toString() + romaji != shown) return@request
+            val mx = sc.values.maxOrNull() ?: return@request
+            val norm = mx + kotlin.math.ln(sc.values.sumOf { kotlin.math.exp((it - mx).toDouble()) }).toFloat()
+            // Converter order as a prior: each step down costs a little.
+            val order = texts.withIndex().sortedByDescending { (i, t) -> (sc[t] ?: -99f) - norm - KANJI_ORDER_WEIGHT * kotlin.math.ln(1f + i) }.map { it.value }
+            val out = cands.toMutableList()
+            slots.forEachIndexed { k, slot -> out[slot] = cands.first { it.text == order[k] } }
+            cjkCands = out
+            bar?.candidates(out.map { it.text })
+        }
+    }
+
+    /** After committed Japanese text: Zenith's likely next phrases. */
+    private fun zenithPhrases() {
+        if (!zenOn("ja") || !f("zenith_next") || Zenith.model == null || reading.isNotEmpty() || romaji.isNotEmpty()) return
+        val before = textBefore("", 32)
+        if (before.isBlank() || before.last().isWhitespace()) return
+        Zenith.request({ m, alive -> Zenith.continuations(m, before, 3, alive) }) { list ->
+            if (lang != "ja" || reading.isNotEmpty() || romaji.isNotEmpty() || panel != "keys" || list.isEmpty()) return@request
+            if (textBefore("", 32) != before) return@request
+            bar?.set(list, false)
+        }
+    }
+
+    /** Next words after a space, from Zenith, with your own habits first. */
+    private fun zenithNext(learned: List<String>) {
+        if (!zenOn(lang) || !f("zenith_next") || Zenith.model == null) return
+        val before = textBefore("")
+        if (before.isBlank() || !(before.endsWith(" ") || before.endsWith("\n"))) return
+        val l = lang
+        val ds = activeDicts()
+        Zenith.request({ m, alive ->
+            Zenith.nextWords(m, l, before, 3, { w -> val lw = w.lowercase(); ds.any { it.contains(lw) } || user.knows(l, lw) || w == "I" }, alive)
+        }) { words ->
+            if (composing.isNotEmpty() || lang != l || panel != "keys" || selStart != selEnd) return@request
+            if (textBefore("") != before) return@request
+            val list = (learned.take(1) + words + learned.drop(1)).distinctBy { it.lowercase() }.take(3)
+            if (list.isEmpty()) return@request
+            val chips = helperChips()
+            if (chips.isNotEmpty()) bar?.chips(chips, list) else bar?.set(list, false)
+        }
     }
 
     private fun updateSuggestions() {
         val b = bar ?: return
         if (!suggestOn || lang in Langs.cjk) {
             val chips = fieldChips()
+            if (suggestOn && chips.isEmpty() && lang == "ja") zenithPhrases()
             when {
                 chips.isNotEmpty() -> b.chips(chips, emptyList())
                 f("quick_toolbar") && prefs.getBoolean("toolbar_auto", true) -> b.toolbar(tools(), activeTools())
@@ -1199,6 +1352,7 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         if (typed.isEmpty()) {
             val p = prevWord
             val list = if (p != null && f("next_word") && learnOn) user.next(lang, p.lowercase(), 3, app) else emptyList()
+            if (f("next_word")) zenithNext(list)
             val chips = helperChips()
             when {
                 chips.isNotEmpty() -> b.chips(chips, list)
@@ -1208,12 +1362,18 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             }
             return
         }
+        showWordSuggestions(typed, rerank = true)
+    }
+
+    private fun showWordSuggestions(typed: String, rerank: Boolean) {
+        val b = bar ?: return
         val s = suggest(typed)
         var list = s?.list ?: listOf(typed)
         emojiSuggestions = if (f("emoji_suggest")) EmojiPanel.forWord(this, lang, typed) else emptyList()
         if (emojiSuggestions.isNotEmpty()) list = list.take(2) + emojiSuggestions.first()
         dateFor(typed)?.let { list = list.take(2) + it }
         b.set(list, s?.auto != null)
+        if (rerank) zenithRerank(typed, s)
     }
 
     /** Password and email fields, where normal suggestions are off. */
@@ -1449,6 +1609,12 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
             return
         }
         lastCorrection = null
+        if (lang in Langs.cjk) {
+            ic.commitText(word, 1)
+            stats.add("words")
+            refreshBar()
+            return
+        }
         val lg = lastGlide
         if (lg != null && composing.isEmpty()) {
             // Replace the glided word with the alternative you tapped.

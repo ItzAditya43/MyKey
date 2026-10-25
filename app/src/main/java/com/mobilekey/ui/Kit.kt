@@ -440,34 +440,49 @@ class Slider(ctx: Context, private val p: Palette, private val min: Int, private
 class DragReorder(private val list: LinearLayout, private val skip: (View) -> Boolean = { false }, private val onMoved: (Int, Int) -> Unit) {
     private val vertical = list.orientation == LinearLayout.VERTICAL
 
+    /**
+     * While dragging, neighbours slide out of the way with translations only; the real move happens
+     * when the finger lifts. (Moving the view mid-gesture makes Android cancel the touch.)
+     */
     fun attach(handle: View, item: View, immediate: Boolean) {
         var start = 0f
         var startIndex = -1
+        var target = -1
         var dragging = false
         val longPress = Runnable { begin(item); dragging = true }
         handle.setOnTouchListener { v, e ->
             val raw = if (vertical) e.rawY else e.rawX
             when (e.actionMasked) {
                 android.view.MotionEvent.ACTION_DOWN -> {
-                    start = raw; startIndex = items().indexOf(item)
+                    start = raw; startIndex = items().indexOf(item); target = startIndex
                     if (immediate) { begin(item); dragging = true } else v.postDelayed(longPress, 260)
                     true
                 }
                 android.view.MotionEvent.ACTION_MOVE -> {
                     if (!dragging) { if (kotlin.math.abs(raw - start) > 12 * list.resources.displayMetrics.density) v.removeCallbacks(longPress); return@setOnTouchListener immediate }
                     list.parent?.requestDisallowInterceptTouchEvent(true)
-                    var offset = raw - start
+                    val offset = raw - start
                     val its = items()
-                    var idx = its.indexOf(item)
-                    // Swap with a neighbour once the dragged item passes its middle.
-                    while (true) {
-                        val next = its.getOrNull(idx + 1)
-                        val prev = its.getOrNull(idx - 1)
-                        if (offset > 0 && next != null && offset > size(next) / 2f) {
-                            swap(item, next); offset -= size(next); start += size(next); idx++
-                        } else if (offset < 0 && prev != null && -offset > size(prev) / 2f) {
-                            swap(item, prev); offset += size(prev); start -= size(prev); idx--
-                        } else break
+                    // Where the item would land: past every neighbour whose middle it has crossed.
+                    var t = startIndex
+                    var acc = 0f
+                    if (offset > 0) {
+                        for (i in startIndex + 1 until its.size) { if (offset > acc + size(its[i]) / 2f) { t = i; acc += size(its[i]) } else break }
+                    } else {
+                        for (i in startIndex - 1 downTo 0) { if (-offset > acc + size(its[i]) / 2f) { t = i; acc += size(its[i]) } else break }
+                    }
+                    if (t != target) {
+                        target = t
+                        val shift = size(item)
+                        its.forEachIndexed { i, o ->
+                            if (o === item) return@forEachIndexed
+                            val d = when {
+                                i in (startIndex + 1)..t -> -shift
+                                i in t until startIndex -> shift
+                                else -> 0f
+                            }
+                            if (vertical) o.animate().translationY(d).setDuration(120).start() else o.animate().translationX(d).setDuration(120).start()
+                        }
                     }
                     if (vertical) item.translationY = offset else item.translationX = offset
                     true
@@ -476,10 +491,21 @@ class DragReorder(private val list: LinearLayout, private val skip: (View) -> Bo
                     v.removeCallbacks(longPress)
                     if (dragging) {
                         dragging = false
-                        item.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f).setDuration(160).start()
+                        val its = items()
+                        its.forEach { it.animate().cancel(); it.translationX = 0f; it.translationY = 0f }
+                        item.scaleX = 1f; item.scaleY = 1f
                         item.elevation = 0f
-                        val end = items().indexOf(item)
-                        if (end != startIndex && startIndex >= 0) onMoved(startIndex, end)
+                        if (target != startIndex && startIndex >= 0 && target >= 0) {
+                            val at = list.indexOfChild(its[target])
+                            val from = startIndex
+                            val to = target
+                            // Re-parent after this touch event has finished dispatching.
+                            list.post {
+                                list.removeView(item)
+                                list.addView(item, at.coerceAtMost(list.childCount))
+                                onMoved(from, to)
+                            }
+                        }
                         true
                     } else {
                         if (!immediate && e.actionMasked == android.view.MotionEvent.ACTION_UP) v.performClick()
@@ -501,10 +527,4 @@ class DragReorder(private val list: LinearLayout, private val skip: (View) -> Bo
         item.animate().scaleX(1.03f).scaleY(1.03f).setDuration(120).start()
     }
 
-    /** Moves [item] to where [other] is, in the parent layout. */
-    private fun swap(item: View, other: View) {
-        val i = list.indexOfChild(other)
-        list.removeView(item)
-        list.addView(item, i)
-    }
 }

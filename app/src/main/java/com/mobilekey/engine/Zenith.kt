@@ -68,6 +68,18 @@ object Zenith {
         }
     }
 
+    /**
+     * Like [request], but not cancelled by later requests (the look-back fix is asked right before the
+     * next-word request). [still] is checked on the main thread before [done] runs.
+     */
+    fun <T : Any> sideRequest(work: (m: ZenithModel, alive: () -> Boolean) -> T?, done: (T) -> Unit) {
+        exec.execute {
+            val m = model ?: return@execute
+            val r = try { work(m) { true } } catch (_: Throwable) { null }
+            if (r != null) main.post { done(r) }
+        }
+    }
+
     private fun record(ms: Float) = synchronized(times) {
         times.addLast(ms)
         if (times.size > 300) times.removeFirst()

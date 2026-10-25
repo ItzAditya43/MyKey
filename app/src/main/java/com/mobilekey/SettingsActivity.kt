@@ -858,7 +858,7 @@ class SettingsActivity : Activity() {
                     addView(k.text(Langs.names[l] ?: l, 16f, p.fg, 620))
                     if (l == current) addView(k.badge("Current", p.accent), LinearLayout.LayoutParams(-2, -2).apply { leftMargin = k.dp(8) })
                 })
-                texts.addView(k.text("${Langs.english[l]} · ${Langs.layoutName(l, prefs)}", 13f, p.muted))
+                texts.addView(k.text(listOfNotNull(Langs.english[l].takeIf { it != Langs.names[l] }, Langs.layoutName(l, prefs)).joinToString(" · "), 13f, p.muted))
                 r.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
                 r.setOnClickListener {
                     prefs.edit().putString("lang", l).apply()

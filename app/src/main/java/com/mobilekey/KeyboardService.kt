@@ -828,9 +828,9 @@ class KeyboardService : InputMethodService(), KeyboardView.Listener {
         val right = "$right1 $right2"
         val tail = text.substring(at)
         val l = lang
-        Zenith.request({ zm, alive -> Zenith.fixInContext(zm, l, left, word, right, cands, LOOKBACK_MARGIN, alive) }) { fix ->
-            val ic = currentInputConnection ?: return@request
-            if (composing.isNotEmpty() || lang != l || textBefore("", 200) != text) return@request
+        Zenith.sideRequest({ zm, alive -> Zenith.fixInContext(zm, l, left, word, right, cands, LOOKBACK_MARGIN, alive) }) { fix ->
+            val ic = currentInputConnection ?: return@sideRequest
+            if (composing.isNotEmpty() || lang != l || textBefore("", 200) != text) return@sideRequest
             ownEdit()
             ic.beginBatchEdit()
             ic.deleteSurroundingText(tail.length, 0)
